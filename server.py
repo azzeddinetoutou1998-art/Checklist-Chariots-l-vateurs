@@ -115,21 +115,41 @@ def construire_alerte(row, rid, photos, cfg):
         msg.add_attachment(data, maintype="image", subtype="jpeg", filename=f"chariot-{row['chariot']}-photo-{i + 1}.jpg")
     return msg
 
-def envoyer(msg):
-    port = int(SMTP["SMTP_PORT"] or 587)
+def _envoyer_port(msg, host, port):
+    """Envoie par un port donné. Lève une erreur qui indique l'étape en cause."""
     ctx = ssl.create_default_context()
-    if port == 465:
-        srv = smtplib.SMTP_SSL(SMTP["SMTP_HOST"], port, timeout=30, context=ctx)
-    else:
-        srv = smtplib.SMTP(SMTP["SMTP_HOST"], port, timeout=30)
-        srv.ehlo()
-        if srv.has_extn("starttls"): srv.starttls(context=ctx); srv.ehlo()
+    etape = f"connexion à {host}:{port}"
     try:
-        if SMTP["SMTP_USER"]: srv.login(SMTP["SMTP_USER"], SMTP["SMTP_PASSWORD"])
-        srv.send_message(msg)
-    finally:
-        try: srv.quit()
-        except Exception: pass
+        if port == 465:
+            srv = smtplib.SMTP_SSL(host, port, timeout=30, context=ctx)
+        else:
+            srv = smtplib.SMTP(host, port, timeout=30)
+            etape = "chiffrement (STARTTLS)"
+            srv.ehlo()
+            if srv.has_extn("starttls"): srv.starttls(context=ctx); srv.ehlo()
+        try:
+            etape = "identification (SMTP_USER / SMTP_PASSWORD)"
+            if SMTP["SMTP_USER"]: srv.login(SMTP["SMTP_USER"], SMTP["SMTP_PASSWORD"].replace(" ", ""))
+            etape = "envoi du message"
+            srv.send_message(msg)
+        finally:
+            try: srv.quit()
+            except Exception: pass
+    except Exception as e:
+        raise RuntimeError(f"{etape} : {type(e).__name__}: {e}") from e
+
+def envoyer(msg):
+    host = SMTP["SMTP_HOST"]
+    try: port = int(re.sub(r"\D", "", SMTP["SMTP_PORT"]) or 587)
+    except ValueError: port = 587
+    try:
+        _envoyer_port(msg, host, port)
+    except RuntimeError as e:
+        # Mauvais port ou port bloqué : on essaie automatiquement l'autre port standard
+        autre = 465 if port != 465 else 587
+        if "identification" in str(e) or "envoi du message" in str(e): raise
+        try: _envoyer_port(msg, host, autre)
+        except RuntimeError as e2: raise RuntimeError(f"Port {port} → {e} | Port {autre} → {e2}") from e2
 
 def noter_alerte(rid, etat):
     with _lock, db() as c:
@@ -142,7 +162,7 @@ def alerte_en_fond(row, rid, photos, cfg):
                 envoyer(construire_alerte(row, rid, photos, cfg))
                 noter_alerte(rid, "envoyee " + now_iso()); return
             except Exception as e:
-                err = f"{type(e).__name__}: {e}"[:200]
+                err = str(e)[:300]
                 print(f"ALERTE e-mail échec (essai {essai + 1}) checklist {rid} : {err}")
                 time.sleep(10 * (essai + 1))
         noter_alerte(rid, "echec " + err)
@@ -443,7 +463,7 @@ class H(BaseHTTPRequestHandler):
                     envoyer(construire_alerte(row, 0, [], cfg))
                     return self._send(200, {"ok": True, "message": "E-mail de test envoyé à " + ", ".join(ALERTE_EMAILS)})
                 except Exception as e:
-                    return self._send(502, {"erreur": f"Échec de l'envoi : {type(e).__name__}: {e}"[:300]})
+                    return self._send(502, {"erreur": f"Échec de l'envoi via {SMTP['SMTP_HOST']} (expéditeur {SMTP['SMTP_USER'] or SMTP['SMTP_FROM']}) : {e}"[:500]})
             if path.startswith("/api/checklists/") and path.endswith("/suivi"):
                 if not self._authed(): return
                 try: rid = int(path.split("/")[3])
