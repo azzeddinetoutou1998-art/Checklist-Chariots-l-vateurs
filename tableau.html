@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tableau de bord caristes</title>
+<style>
+[hidden]{display:none!important}
+/* Layout: barre de filtres, rangée d'indicateurs, puis « À traiter » à gauche et analyses à droite ; une colonne sur téléphone */
+:root{
+  --bg:#eef0ec; --surface:#ffffff; --fg:#171b16; --muted:#5b6358; --faint:#8a9187; --line:#d9ddd5; --grid:#e8ebe5;
+  --accent:#2f5d8a; --accent-soft:#e3ecf5; --brand:#f2bd1d; --brand-ink:#171b16;
+  --good:#1e7a3c; --good-bg:#e3f3e8; --warn:#9a6700; --warn-bg:#fdf3d7; --crit:#b42318; --crit-bg:#fde8e6;
+  --font:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --cond:"Arial Narrow","Roboto Condensed","Segoe UI",Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121511; --surface:#1b1f1a; --fg:#eceee8; --muted:#a3aa9f; --faint:#7c8479; --line:#30362e; --grid:#262b25;
+  --accent:#7fb0e0; --accent-soft:#1d2c3b; --brand:#f2bd1d; --brand-ink:#121511;
+  --good:#6fd38f; --good-bg:#16301f; --warn:#f0c040; --warn-bg:#33290f; --crit:#ff8a80; --crit-bg:#3a1714; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121511; --surface:#1b1f1a; --fg:#eceee8; --muted:#a3aa9f; --faint:#7c8479; --line:#30362e; --grid:#262b25;
+  --accent:#7fb0e0; --accent-soft:#1d2c3b; --brand:#f2bd1d; --brand-ink:#121511;
+  --good:#6fd38f; --good-bg:#16301f; --warn:#f0c040; --warn-bg:#33290f; --crit:#ff8a80; --crit-bg:#3a1714; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
+.top{background:var(--brand);color:var(--brand-ink);padding-inline:16px;padding-block:calc(12px + env(safe-area-inset-top,0px)) 12px;
+  background-image:repeating-linear-gradient(-45deg,transparent 0 16px,rgba(0,0,0,.9) 16px 26px);background-size:100% 6px;background-repeat:no-repeat;background-position:bottom}
+.top-in{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between}
+.top h1{margin:0;font:700 1.45rem/1.1 var(--cond);text-transform:uppercase;letter-spacing:.02em}
+.live{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.85rem}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px rgba(30,122,60,.25)}
+.dot.off{background:var(--crit);box-shadow:none}
+@media (prefers-reduced-motion:no-preference){.dot:not(.off){animation:pulse 2s infinite}}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(30,122,60,0)}}
+.wrap{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:16px 48px;display:flex;flex-direction:column;gap:16px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--fg);font:inherit;font-weight:600;padding:8px 12px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--fg);color:var(--bg)}
+select,input[type=search],input[type=text]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--fg);min-height:38px}
+input[type=search]{width:150px}
+.spacer{flex:1}
+a.btn,button.btn{font:inherit;font-weight:600;padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--fg);text-decoration:none;cursor:pointer;min-height:38px;display:inline-flex;align-items:center}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+@media (max-width:980px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:2px;border-top:4px solid var(--line)}
+.kpi.crit{border-top-color:var(--crit)} .kpi.warn{border-top-color:var(--warn)} .kpi.good{border-top-color:var(--good)}
+.kpi .lab{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kpi .val{font:700 2.2rem/1.1 var(--cond);font-variant-numeric:tabular-nums}
+.kpi.crit .val{color:var(--crit)}
+.kpi .sub{font-size:.82rem;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:980px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--surface);border-radius:10px;padding:16px;min-width:0}
+.panel h2{margin:0 0 12px;font:700 1rem/1.2 var(--cond);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:8px}
+.count{font:600 .78rem var(--font);background:var(--crit-bg);color:var(--crit);padding:1px 8px;border-radius:10px;letter-spacing:0}
+.empty{color:var(--muted);padding:12px 0}
+.issue{border:1px solid var(--line);border-left:5px solid var(--crit);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.issue + .issue{margin-top:10px}
+.issue.encours{border-left-color:var(--warn)}
+.issue.new{animation:flash 2.5s ease-out}
+@keyframes flash{0%{background:var(--crit-bg)}100%{background:transparent}}
+.ih{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline}
+.ih .ch{font:700 1.15rem var(--cond);font-variant-numeric:tabular-nums}
+.ih .meta{color:var(--muted);font-size:.85rem}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.03em}
+.pill.crit{background:var(--crit-bg);color:var(--crit)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.good{background:var(--good-bg);color:var(--good)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:.8rem;padding:2px 8px;border-radius:5px;background:var(--crit-bg);color:var(--fg)}
+.quote{margin:0;padding-left:10px;border-left:3px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
+.acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.acts input{flex:1;min-width:140px}
+.acts button{font:inherit;font-weight:600;font-size:.85rem;padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.acts button.ok{border-color:var(--good);color:var(--good)}
+.note{font-size:.85rem;color:var(--muted)}
+.chart{position:relative}
+.bars{display:flex;align-items:flex-end;gap:2px;height:150px;border-bottom:1px solid var(--line);background:repeating-linear-gradient(to top,var(--grid) 0 1px,transparent 1px 37.5px)}
+.bar{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;cursor:default;position:relative}
+.bar i{display:block;background:var(--accent);border-radius:4px 4px 0 0;min-height:0}
+.bar b{display:block;background:var(--crit)}
+.bar:hover i{opacity:.8}
+.xlab{display:flex;gap:2px;margin-top:4px;font-size:.72rem;color:var(--muted)}
+.xlab span{flex:1;min-width:0;text-align:center;overflow:hidden;white-space:nowrap}
+.legend{display:flex;gap:14px;font-size:.8rem;color:var(--muted);margin-top:8px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--accent)}
+.legend span.k::before{background:var(--crit)}
+.tip{position:absolute;pointer-events:none;background:var(--fg);color:var(--bg);font-size:.8rem;padding:6px 8px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-100%);z-index:2}
+.hbar{display:grid;grid-template-columns:minmax(0,1fr) 80px 28px;gap:8px;align-items:center;font-size:.85rem;padding:4px 0}
+.hbar .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar .track{height:10px;background:var(--grid);border-radius:4px;overflow:hidden}
+.hbar .track i{display:block;height:100%;background:var(--crit);border-radius:0 4px 4px 0}
+.hbar .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.feed{display:flex;flex-direction:column;gap:12px;max-height:420px;overflow:auto}
+.feed .c{display:flex;flex-direction:column;gap:3px}
+.feed .c .meta{font-size:.8rem;color:var(--muted)}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+td.wrap{white-space:normal;min-width:200px;max-width:380px;overflow-wrap:anywhere}
+.thumbs{display:flex;flex-wrap:wrap;gap:6px}
+.thumbs button{padding:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;width:72px;height:72px;cursor:zoom-in;background:var(--grid)}
+.thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:9;padding:16px;cursor:zoom-out}
+.lb img{max-width:100%;max-height:100%;border-radius:6px}
+.lb span{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:16px;color:#fff;font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--crit);color:#fff;font-weight:700;padding:12px 18px;border-radius:8px;z-index:5;max-width:calc(100% - 32px)}
+.demo{background:var(--accent-soft);color:var(--fg);padding:10px 14px;border-radius:8px;font-size:.88rem}
+</style>
+</head>
+<body>
+<div class="top"><div class="top-in">
+  <h1>Prises de poste · caristes</h1>
+  <div class="live"><span class="dot" id="dot"></span><span id="liveTxt">Connexion…</span></div>
+</div></div>
+
+<div class="wrap">
+  <div class="demo" id="demoBanner" hidden>Démonstration avec des données d'exemple. Une nouvelle checklist arrive toutes les 30 secondes pour montrer la mise à jour en direct.</div>
+
+  <div class="filters" role="toolbar" aria-label="Filtres">
+    <div class="seg" id="periode">
+      <button type="button" data-j="1">Aujourd'hui</button>
+      <button type="button" data-j="7" aria-pressed="true">7 jours</button>
+      <button type="button" data-j="30">30 jours</button>
+      <button type="button" data-j="90">90 jours</button>
+    </div>
+    <select id="fSite" aria-label="Site"><option value="">Tous les sites</option></select>
+    <select id="fFour" aria-label="Fournisseur"><option value="">Tous fournisseurs</option></select>
+    <input id="fChariot" type="search" inputmode="numeric" placeholder="N° chariot" aria-label="Numéro de chariot">
+    <span class="spacer"></span>
+    <a class="btn" id="csv" href="/export.csv?jours=7">Exporter (Excel)</a>
+    <a class="btn" href="/horametres">Horamètres</a>
+    <a class="btn" href="/qr">QR-codes</a>
+  </div>
+
+  <section class="kpis" aria-label="Indicateurs">
+    <div class="kpi"><span class="lab">Checklists</span><span class="val" id="kTotal">0</span><span class="sub" id="kTotalSub"></span></div>
+    <div class="kpi"><span class="lab">Chariots contrôlés</span><span class="val" id="kChar">0</span><span class="sub">sur la période</span></div>
+    <div class="kpi" id="kArretBox"><span class="lab">Chariots à l'arrêt</span><span class="val" id="kArret">0</span><span class="sub">dernier contrôle « NON »</span></div>
+    <div class="kpi" id="kTraiterBox"><span class="lab">Anomalies à traiter</span><span class="val" id="kTraiter">0</span><span class="sub" id="kTraiterSub"></span></div>
+    <div class="kpi" id="kConfBox"><span class="lab">Taux de conformité</span><span class="val" id="kConf">–</span><span class="sub">points contrôlés conformes</span></div>
+  </section>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel">
+        <h2>À traiter <span class="count" id="nIssues">0</span></h2>
+        <div id="issues"></div>
+      </section>
+      <section class="panel">
+        <h2>Commentaires et photos des caristes</h2>
+        <div class="feed" id="feed"></div>
+      </section>
+    </div>
+    <div class="col">
+      <section class="panel">
+        <h2>Checklists par jour</h2>
+        <div class="chart" id="chart"></div>
+      </section>
+      <section class="panel">
+        <h2>Points les plus souvent non conformes</h2>
+        <div id="top"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel">
+    <h2>Dernières checklists</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Heure</th><th>Chariot</th><th>Cariste</th><th>Site</th><th>Fournisseur</th><th>Activité</th><th style="text-align:right">Horamètre</th><th>Non conf.</th><th>Sécurité</th><th>Commentaire</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+<div class="lb" id="lb" hidden role="dialog" aria-label="Photo"><img id="lbImg" alt=""><span>Fermer ✕</span></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const DEMO = !!window.DEMO_DATA;
+const S = { rows:new Map(), jours:7, depuis:"", points:[], seen:new Set(), first:true, lastOk:0 };
+const STAT = { a_traiter:["À traiter","crit"], pris_en_charge:["Pris en charge","warn"], resolu:["Résolu","good"] };
+
+function el(tag, cls, text){ const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const fmtH = iso => { const d = new Date(iso); return d.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}) + " " + d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}); };
+const dayKey = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+function thumbs(r){
+  const list = r.photos || []; if (!list.length) return null;
+  const t = el("div", "thumbs");
+  list.forEach((src, i) => { const b = el("button"); b.type = "button"; b.setAttribute("aria-label", `Agrandir la photo ${i+1} du chariot ${r.chariot}`);
+    const im = el("img"); im.src = src; im.alt = ""; im.loading = "lazy"; b.append(im);
+    b.onclick = () => { $("lbImg").src = src; $("lb").hidden = false; }; t.append(b); });
+  return t;
+}
+const ncPoints = r => Object.entries(r.controles).filter(([,v]) => v === "NC").map(([k]) => k);
+
+// ------------------------------------------------------------------ données
+async function fetchRows(){
+  if (DEMO) return demoFetch();
+  const url = S.depuis ? `/api/checklists?depuis=${encodeURIComponent(S.depuis)}` : `/api/checklists?jours=${S.jours}`;
+  const r = await fetch(url, {cache:"no-store"});
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+async function tick(){
+  try {
+    const j = await fetchRows();
+    S.points = j.points || S.points;
+    const fresh = [];
+    for (const r of j.lignes){ if (!S.rows.has(r.id) && !S.first) fresh.push(r); S.rows.set(r.id, r); }
+    S.depuis = j.maintenant; S.lastOk = Date.now(); S.first = false;
+    const alert = fresh.filter(r => r.securite === "NON");
+    if (alert.length) toast(`Chariot ${alert.map(r => r.chariot).join(", ")} déclaré NON roulant par ${alert[0].cariste}`);
+    fresh.forEach(r => S.seen.add(r.id));
+    render();
+  } catch(e) { setLive(); }
+}
+function setLive(){
+  const age = (Date.now() - S.lastOk) / 1000, ok = S.lastOk && age < 30;
+  $("dot").classList.toggle("off", !ok);
+  $("liveTxt").textContent = !S.lastOk ? "Connexion…" : ok ? (DEMO ? "En direct (démo)" : "En direct · actualisé toutes les 5 s") : "Connexion perdue, nouvelle tentative…";
+}
+async function setStatut(id, statut, note){
+  const r = S.rows.get(id);
+  if (DEMO){ Object.assign(r, {statut, note_responsable:note}); return render(); }
+  const res = await fetch(`/api/checklists/${id}/suivi`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({statut, note})});
+  if (res.ok){ Object.assign(r, {statut, note_responsable:note}); render(); } else toast("Mise à jour impossible, réessayez.");
+}
+let tt; function toast(t){ const e = $("toast"); e.textContent = t; e.hidden = false; clearTimeout(tt); tt = setTimeout(() => e.hidden = true, 7000);
+  document.title = "(!) Tableau de bord caristes"; setTimeout(() => document.title = "Tableau de bord caristes", 7000); }
+
+// ------------------------------------------------------------------ filtres
+function filtered(allPeriods){
+  const site = $("fSite").value, four = $("fFour").value, ch = $("fChariot").value.trim();
+  const since = new Date(); if (S.jours === 1) since.setHours(0,0,0,0); else since.setTime(Date.now() - S.jours*864e5);
+  return [...S.rows.values()].filter(r => (allPeriods || new Date(r.horodateur) >= since) && (!site || r.site === site) && (!four || r.fournisseur === four) && (!ch || r.chariot.includes(ch)))
+    .sort((a,b) => b.id - a.id);
+}
+function fillSelect(sel, values){
+  const cur = sel.value, first = sel.options[0];
+  sel.replaceChildren(first); [...values].sort().forEach(v => { const o = el("option", null, v); o.value = v; sel.append(o); }); sel.value = cur;
+}
+
+// ------------------------------------------------------------------ rendu
+function render(){
+  const all = [...S.rows.values()];
+  fillSelect($("fSite"), new Set(all.map(r => r.site).filter(Boolean)));
+  fillSelect($("fFour"), new Set(all.map(r => r.fournisseur).filter(Boolean)));
+  const rows = filtered();
+
+  // indicateurs
+  $("kTotal").textContent = rows.length;
+  const today = dayKey(new Date());
+  $("kTotalSub").textContent = S.jours === 1 ? "aujourd'hui" : `dont ${rows.filter(r => dayKey(new Date(r.horodateur)) === today).length} aujourd'hui`;
+  const last = new Map(); rows.slice().reverse().forEach(r => last.set(r.chariot, r));
+  $("kChar").textContent = last.size;
+  const arret = [...last.values()].filter(r => r.securite === "NON" && r.statut !== "resolu");
+  $("kArret").textContent = arret.length; $("kArretBox").className = "kpi " + (arret.length ? "crit" : "good");
+  const open = rows.filter(r => r.statut !== "resolu");
+  $("kTraiter").textContent = open.filter(r => r.statut === "a_traiter").length;
+  $("kTraiterSub").textContent = `${open.filter(r => r.statut === "pris_en_charge").length} pris en charge`;
+  $("kTraiterBox").className = "kpi " + (open.some(r => r.statut === "a_traiter") ? "warn" : "good");
+  let c = 0, nc = 0; rows.forEach(r => Object.values(r.controles).forEach(v => { if (v === "C") c++; else if (v === "NC") nc++; }));
+  $("kConf").textContent = c + nc ? (Math.round(c / (c + nc) * 1000) / 10).toLocaleString("fr-FR") + " %" : "–";
+  $("kConfBox").className = "kpi " + (!(c+nc) ? "" : nc / (c+nc) > .05 ? "warn" : "good");
+  $("csv").href = `/export.csv?jours=${S.jours}`;
+
+  renderIssues(open); renderFeed(rows); renderChart(rows); renderTop(rows); renderTable(rows); setLive();
+}
+
+function renderIssues(open){
+  const box = $("issues"); $("nIssues").textContent = open.length;
+  const keep = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
+  const keepVal = keep ? document.activeElement.value : null;
+  box.replaceChildren();
+  if (!open.length){ box.append(el("p", "empty", "Aucune anomalie en cours sur la période.")); return; }
+  open.sort((a,b) => (a.securite === "NON" ? 0 : 1) - (b.securite === "NON" ? 0 : 1) || b.id - a.id).forEach(r => {
+    const d = el("article", "issue" + (r.statut === "pris_en_charge" ? " encours" : "") + (S.seen.has(r.id) ? " new" : ""));
+    const h = el("div", "ih");
+    h.append(el("span", "ch", "Chariot " + r.chariot));
+    if (r.securite === "NON") h.append(el("span", "pill crit", "Ne roule pas"));
+    const [lab, cl] = STAT[r.statut]; h.append(el("span", "pill " + cl, lab));
+    h.append(el("span", "meta", `${fmtH(r.horodateur)} · ${r.cariste} · ${r.site} · ${r.fournisseur.split(" ")[0]}`));
+    d.append(h);
+    const pts = ncPoints(r);
+    if (pts.length){ const ch = el("div", "chips"); pts.forEach(p => ch.append(el("span", "chip", p))); d.append(ch); }
+    if (r.commentaire) d.append(el("p", "quote", r.commentaire));
+    const th = thumbs(r); if (th) d.append(th);
+    if (r.note_responsable) d.append(el("span", "note", "Note : " + r.note_responsable));
+    const a = el("div", "acts");
+    const inp = el("input"); inp.type = "text"; inp.id = "note-" + r.id; inp.placeholder = "Note (ex. dépanneur appelé)"; inp.value = r.note_responsable || ""; inp.setAttribute("aria-label", "Note pour le chariot " + r.chariot);
+    a.append(inp);
+    if (r.statut === "a_traiter"){ const b = el("button", null, "Pris en charge"); b.type = "button"; b.onclick = () => setStatut(r.id, "pris_en_charge", inp.value.trim()); a.append(b); }
+    const ok = el("button", "ok", "Résolu"); ok.type = "button"; ok.onclick = () => setStatut(r.id, "resolu", inp.value.trim()); a.append(ok);
+    d.append(a); box.append(d);
+  });
+  S.seen.clear();
+  if (keep && $(keep)){ $(keep).value = keepVal; $(keep).focus(); }
+}
+
+function renderFeed(rows){
+  const box = $("feed"); box.replaceChildren();
+  const list = rows.filter(r => r.commentaire || (r.photos && r.photos.length));
+  if (!list.length){ box.append(el("p", "empty", "Aucun commentaire sur la période.")); return; }
+  list.slice(0, 60).forEach(r => {
+    const c = el("div", "c");
+    c.append(el("span", "meta", `${fmtH(r.horodateur)} · Chariot ${r.chariot} · ${r.cariste} · ${r.site}`));
+    if (r.commentaire) c.append(el("p", "quote", r.commentaire));
+    const th = thumbs(r); if (th) c.append(th); box.append(c);
+  });
+}
+
+function renderChart(rows){
+  const box = $("chart"); box.replaceChildren();
+  const n = S.jours === 1 ? 7 : Math.min(S.jours, 30), days = [];
+  for (let i = n - 1; i >= 0; i--){ const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate() - i); days.push({k:dayKey(d), d, t:0, ko:0}); }
+  const idx = new Map(days.map(x => [x.k, x]));
+  filtered(true).forEach(r => {
+    const x = idx.get(dayKey(new Date(r.horodateur))); if (x){ x.t++; if (r.nb_non_conformes || r.securite === "NON") x.ko++; } });
+  const max = Math.max(4, ...days.map(x => x.t));
+  const bars = el("div", "bars"), labs = el("div", "xlab"), tip = el("div", "tip"); tip.hidden = true;
+  days.forEach((x, i) => {
+    const b = el("div", "bar"); const col = el("i"); col.style.height = (x.t / max * 100) + "%";
+    if (x.ko){ const k = el("b"); k.style.height = (x.ko / Math.max(1, x.t) * 100) + "%"; col.append(k); col.style.display = "flex"; col.style.flexDirection = "column"; col.style.justifyContent = "flex-end"; col.style.overflow = "hidden"; }
+    b.append(col); b.setAttribute("aria-label", `${x.d.toLocaleDateString("fr-FR")} : ${x.t} checklists, ${x.ko} avec anomalie`);
+    b.onmouseenter = () => { tip.hidden = false; tip.textContent = `${x.d.toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})} · ${x.t} checklist${x.t>1?"s":""} · ${x.ko} avec anomalie`;
+      tip.style.left = (b.offsetLeft + b.offsetWidth/2) + "px"; tip.style.top = (bars.offsetTop + bars.offsetHeight * (1 - x.t/max) - 6) + "px"; };
+    b.onmouseleave = () => tip.hidden = true;
+    bars.append(b);
+    const step = Math.ceil(n / 8);
+    labs.append(el("span", null, (n - 1 - i) % step === 0 ? x.d.toLocaleDateString("fr-FR",{day:"numeric",month:"numeric"}) : ""));
+  });
+  const lg = el("div", "legend"); lg.append(el("span", null, "Checklists"), el("span", "k", "dont avec anomalie"));
+  box.append(bars, labs, lg, tip);
+}
+
+function renderTop(rows){
+  const box = $("top"); box.replaceChildren();
+  const cnt = new Map(); rows.forEach(r => ncPoints(r).forEach(p => cnt.set(p, (cnt.get(p) || 0) + 1)));
+  const list = [...cnt].sort((a,b) => b[1] - a[1]).slice(0, 8);
+  if (!list.length){ box.append(el("p", "empty", "Aucun point non conforme sur la période.")); return; }
+  const max = list[0][1];
+  list.forEach(([p, n]) => { const r = el("div", "hbar"); r.title = `${p} : ${n} fois`;
+    const tr = el("div", "track"), i = el("i"); i.style.width = (n / max * 100) + "%"; tr.append(i);
+    r.append(el("span", "t", p), tr, el("span", "n", n)); box.append(r); });
+}
+
+function renderTable(rows){
+  const tb = $("rows"); tb.replaceChildren();
+  if (!rows.length){ const tr = el("tr"); const td = el("td", "empty", "Aucune checklist sur la période."); td.colSpan = 10; tr.append(td); tb.append(tr); return; }
+  rows.slice(0, 200).forEach(r => {
+    const tr = el("tr");
+    const sec = el("td"); sec.append(el("span", "pill " + (r.securite === "NON" ? "crit" : "good"), r.securite));
+    const h = el("td", "num"); h.textContent = r.horametre == null ? "" : Number(r.horametre).toLocaleString("fr-FR");
+    const com = el("td", "wrap", (r.commentaire || "") + (r.photos && r.photos.length ? `  [${r.photos.length} photo${r.photos.length>1?"s":""}]` : ""));
+    tr.append(el("td", null, fmtH(r.horodateur)), el("td", null, r.chariot), el("td", null, r.cariste), el("td", null, r.site),
+      el("td", null, r.fournisseur.split(" ")[0]), el("td", null, r.activite), h, el("td", "num", r.nb_non_conformes || ""), sec, com);
+    tb.append(tr);
+  });
+}
+
+// ------------------------------------------------------------------ événements
+$("periode").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  $("periode").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  const j = +b.dataset.j; const more = j > S.jours; S.jours = j;
+  if (more && !DEMO){ S.depuis = ""; S.first = true; tick(); } else render();
+});
+$("lb").onclick = () => { $("lb").hidden = true; $("lbImg").src = ""; };
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("lb").click(); });
+["fSite","fFour","fChariot"].forEach(id => $(id).addEventListener("input", render));
+
+// ------------------------------------------------------------------ démo
+let demoQueue = [];
+function demoFetch(){
+  if (S.first){ demoQueue = []; return Promise.resolve({maintenant:"x", lignes:window.DEMO_DATA.lignes, points:window.DEMO_DATA.points}); }
+  const out = demoQueue; demoQueue = []; return Promise.resolve({maintenant:"x", lignes:out});
+}
+if (DEMO){
+  $("demoBanner").hidden = false;
+  document.querySelectorAll('a.btn').forEach(a => a.hidden = true);
+  let n = 0;
+  setInterval(() => { const g = window.DEMO_DATA.gen; if (g) demoQueue.push(g(n++)); }, 30000);
+}
+
+tick(); setInterval(tick, 5000); setInterval(setLive, 5000);
+</script>
+</body>
+</html>

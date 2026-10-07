@@ -1,0 +1,8 @@
+# Données des caristes : ne jamais publier sur GitHub
+data/
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+.DS_Store
+Thumbs.db

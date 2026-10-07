@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QR-codes checklist caristes</title>
+<style>
+[hidden]{display:none!important}
+:root{--bg:#eef0ec;--surface:#fff;--fg:#171b16;--muted:#5b6358;--line:#d9ddd5;--brand:#f2bd1d;
+  --font:"Segoe UI",Roboto,Arial,sans-serif;--cond:"Arial Narrow","Roboto Condensed",Arial,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--font)}
+.ctl{max-width:900px;margin:0 auto;padding:20px 16px;display:flex;flex-direction:column;gap:12px}
+h1{margin:0;font:700 1.5rem var(--cond);text-transform:uppercase}
+label{font-weight:600;display:flex;flex-direction:column;gap:6px}
+input,textarea{font:inherit;padding:10px;border:1px solid var(--line);border-radius:7px}
+.row{display:flex;flex-wrap:wrap;gap:10px}
+button,a.b{font:inherit;font-weight:600;padding:10px 14px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;text-decoration:none}
+button.p{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.hint{color:var(--muted);font-size:.9rem;margin:0}
+.sheet{max-width:900px;margin:0 auto 40px;padding:0 16px}
+.poster{background:#fff;color:#111;border:1px solid var(--line);text-align:center;padding:40px 30px;display:flex;flex-direction:column;align-items:center;gap:14px;page-break-after:always}
+.band{align-self:stretch;height:26px;background:repeating-linear-gradient(-45deg,#f2bd1d 0 22px,#111 22px 40px);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.poster h2{margin:6px 0 0;font:700 3rem/1 var(--cond);text-transform:uppercase}
+.poster .q{width:min(70vw,420px);aspect-ratio:1;max-width:100%}
+.poster .q svg,.lab .q svg{width:100%;height:100%;display:block}
+.poster p{margin:0;font-size:1.15rem}
+.poster .warn{color:#b42318;font-weight:700}
+.labels{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.lab{background:#fff;color:#111;border:1px dashed #999;padding:12px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;break-inside:avoid}
+.lab .q{width:140px;aspect-ratio:1}
+.lab svg.bc{width:100%;max-width:220px;height:auto;display:block}
+.lab b{font:700 1.5rem var(--cond)}
+.lab span{font-size:.8rem}
+@media print{.ctl{display:none}.sheet{padding:0;max-width:none}body{background:#fff}.poster{border:0}}
+</style>
+</head>
+<body>
+<div class="ctl">
+  <h1>QR-codes à imprimer</h1>
+  <label>Adresse publique du formulaire
+    <input id="url" type="url">
+  </label>
+  <p class="hint">C'est l'adresse que les téléphones des caristes doivent pouvoir ouvrir. Si vous passez par un nom de domaine, mettez-le ici.</p>
+  <label>Étiquettes par chariot (facultatif)
+    <textarea id="chariots" rows="2" placeholder="ex. 10452, 10453, 20981"></textarea>
+  </label>
+  <p class="hint">Une étiquette par chariot, à coller dans la cabine. Au téléphone, le QR-code ouvre la checklist avec le numéro déjà rempli. Au gun, le formulaire étant ouvert, scanner le QR-code ou le code-barres remplit le numéro du chariot.</p>
+  <div class="row"><button class="p" type="button" onclick="window.print()">Imprimer</button><a class="b" href="/tableau">Retour au tableau de bord</a></div>
+</div>
+<div class="sheet">
+  <div class="poster">
+    <div class="band"></div>
+    <p><b>CARISTES</b></p>
+    <h2>Checklist de<br>prise de poste</h2>
+    <p>Obligatoire avant chaque utilisation du chariot</p>
+    <div class="q" id="qMain"></div>
+    <h2 style="font-size:2rem">Scannez avec votre téléphone</h2>
+    <p>Appareil photo, visez le QR-code, remplissez la checklist complète.</p>
+    <p class="warn">Chariot non conforme : NE PAS ROULER, prévenir le responsable.</p>
+    <div class="band"></div>
+  </div>
+  <div class="labels" id="labels"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+function svg(text){ const q = qrcode(0, "M"); q.addData(text, "Byte"); q.make(); return q.createSvgTag({cellSize:4, margin:4, scalable:true}); }
+function render(){
+  const base = $("url").value.trim().replace(/\/+$/, "");
+  if (typeof qrcode === "undefined"){ $("qMain").textContent = "Connexion internet nécessaire pour dessiner les QR-codes."; return; }
+  $("qMain").innerHTML = svg(base + "/");
+  const box = $("labels"); box.replaceChildren();
+  $("chariots").value.split(/[\s,;]+/).map(s => s.replace(/\D/g, "")).filter(Boolean).forEach(n => {
+    const d = document.createElement("div"); d.className = "lab";
+    const q = document.createElement("div"); q.className = "q"; q.innerHTML = svg(`${base}/?chariot=${n}`);
+    const b = document.createElement("b"); b.textContent = "Chariot " + n;
+    const s = document.createElement("span"); s.textContent = "Checklist prise de poste · téléphone ou gun";
+    d.append(b, q);
+    if (typeof JsBarcode !== "undefined"){
+      const bc = document.createElementNS("http://www.w3.org/2000/svg", "svg"); bc.setAttribute("class", "bc");
+      try { JsBarcode(bc, n, {format:"CODE128", height:50, width:2, margin:6, displayValue:false}); d.append(bc); } catch(e){}
+    }
+    d.append(s); box.append(d);
+  });
+}
+$("url").value = location.origin;
+$("url").addEventListener("input", render); $("chariots").addEventListener("input", render);
+window.addEventListener("load", render);
+</script>
+</body>
+</html>

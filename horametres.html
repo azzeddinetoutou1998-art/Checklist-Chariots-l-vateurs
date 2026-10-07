@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Horamètres chariots</title>
+<style>
+[hidden]{display:none!important}
+/* Layout: filtres, indicateurs, tableau par chariot + courbe du chariot choisi, puis par activité et relevés incohérents */
+:root{
+  --bg:#eef0ec; --surface:#ffffff; --fg:#171b16; --muted:#5b6358; --faint:#8a9187; --line:#d9ddd5; --grid:#e8ebe5;
+  --accent:#2f5d8a; --accent-soft:#e3ecf5; --brand:#f2bd1d; --brand-ink:#171b16;
+  --good:#1e7a3c; --good-bg:#e3f3e8; --warn:#9a6700; --warn-bg:#fdf3d7; --crit:#b42318; --crit-bg:#fde8e6;
+  --font:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --cond:"Arial Narrow","Roboto Condensed","Segoe UI",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121511; --surface:#1b1f1a; --fg:#eceee8; --muted:#a3aa9f; --faint:#7c8479; --line:#30362e; --grid:#262b25;
+  --accent:#7fb0e0; --accent-soft:#1d2c3b; --brand:#f2bd1d; --brand-ink:#121511;
+  --good:#6fd38f; --good-bg:#16301f; --warn:#f0c040; --warn-bg:#33290f; --crit:#ff8a80; --crit-bg:#3a1714; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121511; --surface:#1b1f1a; --fg:#eceee8; --muted:#a3aa9f; --faint:#7c8479; --line:#30362e; --grid:#262b25;
+  --accent:#7fb0e0; --accent-soft:#1d2c3b; --brand:#f2bd1d; --brand-ink:#121511;
+  --good:#6fd38f; --good-bg:#16301f; --warn:#f0c040; --warn-bg:#33290f; --crit:#ff8a80; --crit-bg:#3a1714; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
+.top{background:var(--brand);color:var(--brand-ink);padding-inline:16px;padding-block:calc(12px + env(safe-area-inset-top,0px)) 12px;
+  background-image:repeating-linear-gradient(-45deg,transparent 0 16px,rgba(0,0,0,.9) 16px 26px);background-size:100% 6px;background-repeat:no-repeat;background-position:bottom}
+.top-in{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between}
+.top h1{margin:0;font:700 1.45rem/1.1 var(--cond);text-transform:uppercase;letter-spacing:.02em}
+.nav{display:flex;gap:6px}
+.nav a{color:var(--brand-ink);font-weight:700;text-decoration:none;padding:6px 10px;border-radius:6px}
+.nav a[aria-current]{background:var(--brand-ink);color:var(--brand)}
+.wrap{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:16px 48px;display:flex;flex-direction:column;gap:16px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--fg);font:inherit;font-weight:600;padding:8px 12px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--fg);color:var(--bg)}
+select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--fg);min-height:38px}
+.spacer{flex:1}
+button.btn{font:inherit;font-weight:600;padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--fg);cursor:pointer;min-height:38px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.kpi .lab{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kpi .val{font:700 2.2rem/1.1 var(--cond);font-variant-numeric:tabular-nums}
+.kpi .val small{font-size:1rem;font-weight:600;color:var(--muted)}
+.kpi .sub{font-size:.82rem;color:var(--muted)}
+.kpi.warn .val{color:var(--warn)}
+.grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1000px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border-radius:10px;padding:16px;min-width:0}
+.panel h2{margin:0 0 4px;font:700 1rem/1.2 var(--cond);text-transform:uppercase;letter-spacing:.06em}
+.panel .desc{margin:0 0 12px;color:var(--muted);font-size:.85rem}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+th button{all:unset;cursor:pointer}
+th button:focus-visible{outline:2px solid var(--accent)}
+th[aria-sort=descending] button::after{content:" ▼"} th[aria-sort=ascending] button::after{content:" ▲"}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr.sel{background:var(--accent-soft)}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--grid)}
+.avg{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.avg b{min-width:52px;text-align:right}
+.avg .track{width:70px;height:8px;background:var(--grid);border-radius:4px;overflow:hidden}
+.avg .track i{display:block;height:100%;background:var(--accent);border-radius:0 4px 4px 0}
+.muted{color:var(--muted)}
+.empty{color:var(--muted);padding:12px 0}
+.pill{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.03em}
+.pill.crit{background:var(--crit-bg);color:var(--crit)} .pill.warn{background:var(--warn-bg);color:var(--warn)}
+.chart svg{width:100%;height:auto;display:block;overflow:visible}
+.chart .ax{fill:var(--muted);font-size:11px;font-family:var(--font)}
+.chart .gl{stroke:var(--grid);stroke-width:1}
+.chart .ln{fill:none;stroke:var(--accent);stroke-width:2}
+.chart .pt{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+.chart .br{fill:var(--accent)}
+.chart .av{stroke:var(--fg);stroke-width:1.5;stroke-dasharray:4 4}
+.chart .avl{fill:var(--fg);font-size:11px;font-weight:700;font-family:var(--font)}
+.chart .hit{fill:transparent}
+.chart{position:relative}
+.tip{position:absolute;pointer-events:none;background:var(--fg);color:var(--bg);font-size:.8rem;padding:6px 8px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-110%);z-index:2}
+.ch-title{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin-bottom:8px}
+.ch-title b{font:700 1.3rem var(--cond)}
+.sub2{margin:14px 0 6px;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.demo{background:var(--accent-soft);color:var(--fg);padding:10px 14px;border-radius:8px;font-size:.88rem}
+.how{font-size:.85rem;color:var(--muted);margin:0}
+</style>
+</head>
+<body>
+<div class="top"><div class="top-in">
+  <h1>Horamètres chariots</h1>
+  <nav class="nav"><a href="/tableau">Tableau de bord</a><a href="/horametres" aria-current="page">Horamètres</a></nav>
+</div></div>
+
+<div class="wrap">
+  <div class="demo" id="demoBanner" hidden>Démonstration avec des relevés d'exemple sur 90 jours (10 chariots), dont deux saisies erronées pour montrer la détection.</div>
+
+  <div class="filters" role="toolbar" aria-label="Filtres">
+    <div class="seg" id="periode">
+      <button type="button" data-j="30">30 jours</button>
+      <button type="button" data-j="90" aria-pressed="true">90 jours</button>
+      <button type="button" data-j="180">6 mois</button>
+      <button type="button" data-j="365">1 an</button>
+    </div>
+    <select id="fSite" aria-label="Site"><option value="">Tous les sites</option></select>
+    <select id="fFour" aria-label="Fournisseur"><option value="">Tous fournisseurs</option></select>
+    <select id="fAct" aria-label="Activité"><option value="">Toutes activités</option></select>
+    <div class="seg" id="base" title="Base de calcul de la moyenne quotidienne">
+      <button type="button" data-b="cal" aria-pressed="true">Jours calendaires</button>
+      <button type="button" data-b="ouv">Jours ouvrés</button>
+    </div>
+    <span class="spacer"></span>
+    <button class="btn" id="csv" type="button">Exporter (Excel)</button>
+  </div>
+
+  <section class="kpis" aria-label="Indicateurs">
+    <div class="kpi"><span class="lab">Heures cumulées</span><span class="val" id="kH">–</span><span class="sub">tous chariots, sur la période</span></div>
+    <div class="kpi"><span class="lab">Moyenne flotte</span><span class="val" id="kM">–</span><span class="sub" id="kMsub">heures par jour et par chariot</span></div>
+    <div class="kpi"><span class="lab">Chariots suivis</span><span class="val" id="kC">–</span><span class="sub" id="kCsub"></span></div>
+    <div class="kpi" id="kABox"><span class="lab">Relevés incohérents</span><span class="val" id="kA">–</span><span class="sub">exclus du calcul</span></div>
+  </section>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Moyenne quotidienne par chariot</h2>
+      <p class="desc">Cliquez sur un chariot pour voir l'évolution de son compteur.</p>
+      <div class="tbl"><table id="tChar">
+        <thead><tr>
+          <th data-k="chariot"><button type="button">Chariot</button></th>
+          <th data-k="four"><button type="button">Fournisseur</button></th>
+          <th data-k="actp"><button type="button">Activité principale</button></th>
+          <th class="num" data-k="last"><button type="button">Dernier relevé</button></th>
+          <th class="num" data-k="h"><button type="button">Heures</button></th>
+          <th class="num" data-k="j"><button type="button">Jours</button></th>
+          <th class="num" data-k="moy" aria-sort="descending"><button type="button">Moyenne / jour</button></th>
+        </tr></thead><tbody></tbody>
+      </table></div>
+    </section>
+    <section class="panel">
+      <div class="ch-title"><b id="cTitle">Chariot</b><span class="muted" id="cSub"></span></div>
+      <div class="sub2">Relevés du compteur (h)</div>
+      <div class="chart" id="cLine"></div>
+      <div class="sub2">Heures par jour entre deux relevés</div>
+      <div class="chart" id="cBars"></div>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Moyenne quotidienne par activité</h2>
+      <p class="desc">Heures par jour et par chariot. Les heures entre deux relevés sont comptées dans l'activité déclarée au premier relevé. Si un chariot change d'activité dans la journée, la journée est partagée au prorata des heures.</p>
+      <div class="tbl"><table id="tAct">
+        <thead><tr><th>Activité</th><th class="num">Chariots</th><th class="num">Heures</th><th class="num">Jours-chariot</th><th class="num">Moyenne / jour</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+    <section class="panel">
+      <h2>Relevés incohérents</h2>
+      <p class="desc">Compteur qui baisse, ou plus de 24 h par jour entre deux relevés. Ces intervalles sont exclus des moyennes : vérifiez la saisie.</p>
+      <div class="tbl"><table id="tAno">
+        <thead><tr><th>Chariot</th><th>Du</th><th class="num">Relevé</th><th>Au</th><th class="num">Relevé</th><th>Saisi par</th><th>Problème</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+  </div>
+
+  <p class="how">Calcul : pour chaque chariot, heures = relevé suivant − relevé précédent. Exemple : 8 555 h le 07/10 puis 8 560 h le 08/10 donne 5 h sur 1 jour, soit 5 h/jour. La moyenne d'un chariot est le total de ses heures divisé par le total des jours écoulés entre ses relevés. En « jours ouvrés », seuls les jours du lundi au vendredi sont comptés.</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const DEMO = !!window.DEMO_RELEVES;
+const S = { releves:[], jours:90, base:"cal", sort:{k:"moy", dir:-1}, sel:null };
+const nf1 = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:1, minimumFractionDigits:1});
+const nf0 = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:0});
+const fmtD = d => d ? d.slice(8,10) + "/" + d.slice(5,7) + "/" + d.slice(2,4) : "";
+function el(tag, cls, text){ const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+// ------------------------------------------------------------------ calcul
+const toUTC = d => Date.UTC(+d.slice(0,4), +d.slice(5,7) - 1, +d.slice(8,10));
+const daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 864e5);
+function workdays(a, b){ let n = 0; for (let t = toUTC(a); t < toUTC(b); t += 864e5){ const w = new Date(t).getUTCDay(); if (w >= 1 && w <= 5) n++; } return n; }
+
+/** Découpe les relevés de chaque chariot en intervalles successifs. */
+function intervals(releves){
+  const by = new Map();
+  releves.forEach(r => { if (r.horametre == null) return; (by.get(r.chariot) || by.set(r.chariot, []).get(r.chariot)).push(r); });
+  const ok = [], bad = [];
+  by.forEach(list => {
+    list.sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : (x.horodateur < y.horodateur ? -1 : 1));
+    for (let i = 1; i < list.length; i++){
+      const a = list[i-1], b = list[i], j = daysBetween(a.date, b.date), h = b.horametre - a.horametre;
+      const it = { chariot:a.chariot, a, b, h, j, jo:workdays(a.date, b.date), act:a.activite || "Non renseignée", site:b.site, four:b.fournisseur };
+      if (h < 0) bad.push(Object.assign(it, {pb:"Compteur en baisse"}));
+      else if (h > 24 * Math.max(j, 1)) bad.push(Object.assign(it, {pb:`${nf0.format(h)} h en ${Math.max(j,1)} j`}));
+      else ok.push(it);
+    }
+  });
+  // Plusieurs relevés le même jour (changement d'activité entre deux postes) : les jours écoulés
+  // sont répartis entre les activités de ce jour au prorata des heures, pour les moyennes par activité.
+  const groups = new Map();
+  ok.forEach(it => { const k = it.chariot + "|" + it.a.date; (groups.get(k) || groups.set(k, []).get(k)).push(it); });
+  groups.forEach(g => {
+    const H = g.reduce((s, it) => s + it.h, 0), J = g.reduce((s, it) => s + it.j, 0), JO = g.reduce((s, it) => s + it.jo, 0);
+    g.forEach(it => { const share = H > 0 ? it.h / H : 1 / g.length; it.jA = J * share; it.joA = JO * share; });
+  });
+  return {ok, bad};
+}
+const days = it => S.base === "ouv" ? it.jo : it.j;
+const daysAct = it => S.base === "ouv" ? it.joA : it.jA;
+const ratio = (h, j) => j > 0 ? h / j : null;
+
+function aggregate(ok, releves){
+  const ch = new Map(), act = new Map();
+  ok.forEach(it => {
+    const c = ch.get(it.chariot) || ch.set(it.chariot, {chariot:it.chariot, h:0, j:0, acts:new Map(), its:[]}).get(it.chariot);
+    c.h += it.h; c.j += days(it); c.acts.set(it.act, (c.acts.get(it.act) || 0) + it.h); c.its.push(it);
+    const a = act.get(it.act) || act.set(it.act, {act:it.act, h:0, j:0, chariots:new Set()}).get(it.act);
+    a.h += it.h; a.j += daysAct(it); a.chariots.add(it.chariot);
+  });
+  const lastBy = new Map(); releves.forEach(r => { const l = lastBy.get(r.chariot); if (!l || r.date > l.date || (r.date === l.date && r.horodateur > l.horodateur)) lastBy.set(r.chariot, r); });
+  ch.forEach(c => { const l = lastBy.get(c.chariot); c.last = l.horametre; c.lastDate = l.date; c.four = (l.fournisseur || "").split(" ")[0]; c.site = l.site;
+    c.moy = ratio(c.h, c.j); c.actp = [...c.acts].sort((x, y) => y[1] - x[1])[0][0]; });
+  return {chariots:[...ch.values()], activites:[...act.values()].map(a => Object.assign(a, {moy:ratio(a.h, a.j)}))};
+}
+
+// ------------------------------------------------------------------ données
+async function load(){
+  if (DEMO) S.releves = window.DEMO_RELEVES;
+  else {
+    const r = await fetch(`/api/releves?jours=${S.jours}`, {cache:"no-store"});
+    if (!r.ok){ document.querySelector("#tChar tbody").replaceChildren(rowMsg(7, "Chargement impossible. Rechargez la page.")); return; }
+    S.releves = (await r.json()).releves;
+  }
+  fillSelects(); render();
+}
+function fillSelects(){
+  const fill = (sel, vals) => { const cur = sel.value; sel.replaceChildren(sel.options[0]); [...new Set(vals.filter(Boolean))].sort().forEach(v => { const o = el("option", null, v); o.value = v; sel.append(o); }); sel.value = cur; };
+  fill($("fSite"), S.releves.map(r => r.site)); fill($("fFour"), S.releves.map(r => r.fournisseur)); fill($("fAct"), S.releves.map(r => r.activite));
+}
+function current(){
+  const site = $("fSite").value, four = $("fFour").value, actF = $("fAct").value;
+  let rel = S.releves;
+  if (DEMO){ const lim = new Date(Date.now() - S.jours * 864e5).toISOString().slice(0,10); rel = rel.filter(r => r.date >= lim); }
+  rel = rel.filter(r => (!site || r.site === site) && (!four || r.fournisseur === four));
+  const {ok, bad} = intervals(rel);
+  const okF = actF ? ok.filter(it => it.act === actF) : ok;
+  return {rel, ok:okF, bad, ...aggregate(okF, rel)};
+}
+
+// ------------------------------------------------------------------ rendu
+function rowMsg(n, t){ const tr = el("tr"), td = el("td", "empty", t); td.colSpan = n; tr.append(td); return tr; }
+function avgCell(v, max){
+  const d = el("div", "avg"), b = el("b", null, v == null ? "–" : nf1.format(v) + " h");
+  const tr = el("div", "track"), i = el("i"); i.style.width = v == null ? "0" : Math.min(100, v / max * 100) + "%"; tr.append(i);
+  d.append(tr, b); return d;
+}
+function render(){
+  const D = current(), unit = S.base === "ouv" ? "jour ouvré" : "jour";
+  const H = D.ok.reduce((s, it) => s + it.h, 0), J = D.ok.reduce((s, it) => s + days(it), 0);
+  $("kH").textContent = nf0.format(H) + " h";
+  $("kM").replaceChildren(document.createTextNode(J ? nf1.format(H / J) : "–"), el("small", null, " h"));
+  $("kMsub").textContent = `par ${unit} et par chariot`;
+  $("kC").textContent = D.chariots.length; $("kCsub").textContent = `${D.rel.length} relevés sur la période`;
+  $("kA").textContent = D.bad.length; $("kABox").className = "kpi" + (D.bad.length ? " warn" : "");
+  document.querySelector('#tChar th[data-k="moy"] button').textContent = S.base === "ouv" ? "Moyenne / jour ouvré" : "Moyenne / jour";
+  document.querySelector('#tAct th:last-child').textContent = S.base === "ouv" ? "Moyenne / jour ouvré" : "Moyenne / jour";
+
+  // par chariot
+  const tb = document.querySelector("#tChar tbody"); tb.replaceChildren();
+  const {k, dir} = S.sort;
+  const list = D.chariots.slice().sort((x, y) => { const a = x[k], b = y[k];
+    if (a == null) return 1; if (b == null) return -1;
+    return (typeof a === "number" ? a - b : String(a).localeCompare(String(b), "fr", {numeric:true})) * dir; });
+  document.querySelectorAll("#tChar th").forEach(th => th.setAttribute("aria-sort", th.dataset.k === k ? (dir < 0 ? "descending" : "ascending") : "none"));
+  const maxM = Math.max(1, ...list.map(c => c.moy || 0));
+  if (!list.length) tb.append(rowMsg(7, "Pas encore assez de relevés : il en faut au moins deux par chariot."));
+  if (!S.sel || !list.some(c => c.chariot === S.sel)) S.sel = list[0] ? list[0].chariot : null;
+  list.forEach(c => {
+    const tr = el("tr", "click" + (c.chariot === S.sel ? " sel" : "")); tr.tabIndex = 0;
+    tr.onclick = tr.onkeydown = e => { if (e.type === "keydown" && e.key !== "Enter") return; S.sel = c.chariot; render(); };
+    const m = el("td", "num"); m.append(avgCell(c.moy, maxM));
+    tr.append(el("td", null, c.chariot), el("td", null, c.four), el("td", null, c.actp),
+      el("td", "num", nf0.format(c.last) + " h"), el("td", "num", nf1.format(c.h)), el("td", "num", c.j), m);
+    tb.append(tr);
+  });
+
+  // par activité
+  const ta = document.querySelector("#tAct tbody"); ta.replaceChildren();
+  const acts = D.activites.sort((x, y) => (y.moy || 0) - (x.moy || 0)), maxA = Math.max(1, ...acts.map(a => a.moy || 0));
+  if (!acts.length) ta.append(rowMsg(5, "Aucune donnée sur la période."));
+  acts.forEach(a => { const tr = el("tr"), m = el("td", "num"); m.append(avgCell(a.moy, maxA));
+    tr.append(el("td", null, a.act), el("td", "num", a.chariots.size), el("td", "num", nf1.format(a.h)), el("td", "num", Number.isInteger(a.j) ? a.j : nf1.format(a.j)), m); ta.append(tr); });
+
+  // anomalies
+  const tn = document.querySelector("#tAno tbody"); tn.replaceChildren();
+  if (!D.bad.length) tn.append(rowMsg(7, "Aucun relevé incohérent."));
+  D.bad.sort((x, y) => y.b.date < x.b.date ? -1 : 1).forEach(it => { const tr = el("tr");
+    tr.append(el("td", null, it.chariot), el("td", null, fmtD(it.a.date)), el("td", "num", nf0.format(it.a.horametre)), el("td", null, fmtD(it.b.date)),
+      el("td", "num", nf0.format(it.b.horametre)), el("td", null, it.b.cariste || ""));
+    const p = el("td"); p.append(el("span", "pill " + (it.h < 0 ? "crit" : "warn"), it.pb)); tr.append(p); tn.append(tr); });
+
+  drawChariot(D);
+}
+
+// ------------------------------------------------------------------ graphiques
+const NS = "http://www.w3.org/2000/svg";
+function sv(tag, attrs, text){ const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; }
+function ticks(min, max, n){ const span = max - min || 1, step0 = span / n, p = Math.pow(10, Math.floor(Math.log10(step0))), m = step0 / p;
+  const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p, out = [];
+  // l'échelle couvre toujours le minimum et le maximum (première et dernière graduation incluses)
+  const end = Math.ceil(max / step - 1e-9) * step;
+  for (let v = Math.floor(min / step + 1e-9) * step; v <= end + step * 1e-6; v += step) out.push(Math.round(v / step) * step); return out; }
+function tipper(box){ let t = box.querySelector(".tip"); if (!t){ t = el("div", "tip"); t.hidden = true; box.append(t); } return t; }
+
+function drawChariot(D){
+  const c = D.chariots.find(x => x.chariot === S.sel);
+  $("cTitle").textContent = c ? "Chariot " + c.chariot : "Aucun chariot";
+  $("cSub").textContent = c ? `${c.four} · ${c.site || ""} · moyenne ${c.moy == null ? "–" : nf1.format(c.moy) + " h"} par ${S.base === "ouv" ? "jour ouvré" : "jour"}` : "";
+  const line = $("cLine"), bars = $("cBars"); line.replaceChildren(); bars.replaceChildren();
+  if (!c) return;
+  const pts = D.rel.filter(r => r.chariot === c.chariot).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.horodateur < b.horodateur ? -1 : 1));
+  const W = 560, H = 180, L = 52, R = 10, T = 10, B = 26;
+  const t0 = toUTC(pts[0].date), t1 = Math.max(toUTC(pts[pts.length-1].date), t0 + 864e5);
+  const X = d => L + (toUTC(d) - t0) / (t1 - t0) * (W - L - R);
+  const xTicks = n => { const out = [], st = Math.max(1, Math.ceil((t1 - t0) / 864e5 / n)); for (let t = t0; t <= t1; t += st * 864e5) out.push(new Date(t).toISOString().slice(0,10)); return out; };
+
+  // courbe du compteur
+  const vals = pts.map(p => p.horametre), vmin = Math.min(...vals), vmax = Math.max(...vals), yt = ticks(vmin, vmax === vmin ? vmin + 10 : vmax, 4);
+  const y0 = Math.min(vmin, yt[0]), y1 = Math.max(vmax, yt[yt.length-1]), Y = v => T + (1 - (v - y0) / (y1 - y0 || 1)) * (H - T - B);
+  let s = sv("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":`Évolution du compteur du chariot ${c.chariot}`});
+  yt.forEach(v => { s.append(sv("line", {class:"gl", x1:L, x2:W-R, y1:Y(v), y2:Y(v)}), sv("text", {class:"ax", x:L-6, y:Y(v)+4, "text-anchor":"end"}, nf0.format(v))); });
+  xTicks(6).forEach(d => s.append(sv("text", {class:"ax", x:X(d), y:H-6, "text-anchor":"middle"}, fmtD(d).slice(0,5))));
+  s.append(sv("path", {class:"ln", d:pts.map((p, i) => (i ? "L" : "M") + X(p.date).toFixed(1) + " " + Y(p.horametre).toFixed(1)).join(" ")}));
+  const tip = tipper(line);
+  pts.forEach(p => { const cx = X(p.date), cy = Y(p.horametre);
+    if (pts.length <= 60) s.append(sv("circle", {class:"pt", cx, cy, r:3.5}));
+    const hit = sv("circle", {class:"hit", cx, cy, r:9}); hit.addEventListener("mouseenter", () => { tip.hidden = false; tip.textContent = `${fmtD(p.date)} · ${nf1.format(p.horametre)} h · ${p.cariste || ""}`; tip.style.left = (cx / W * line.clientWidth) + "px"; tip.style.top = (cy / H * line.clientHeight) + "px"; });
+    hit.addEventListener("mouseleave", () => tip.hidden = true); s.append(hit); });
+  line.prepend(s);
+
+  // barres heures/jour par intervalle
+  const its = c.its.filter(it => days(it) > 0);
+  const rates = its.map(it => it.h / days(it)), rmax = Math.max(8, ...rates), rt = ticks(0, rmax, 4), r1 = rt[rt.length-1];
+  const YB = v => T + (1 - v / r1) * (H - T - B);
+  s = sv("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":`Heures par jour du chariot ${c.chariot}`});
+  rt.forEach(v => { s.append(sv("line", {class:"gl", x1:L, x2:W-R, y1:YB(v), y2:YB(v)}), sv("text", {class:"ax", x:L-6, y:YB(v)+4, "text-anchor":"end"}, nf0.format(v) + " h")); });
+  xTicks(6).forEach(d => s.append(sv("text", {class:"ax", x:X(d), y:H-6, "text-anchor":"middle"}, fmtD(d).slice(0,5))));
+  const tip2 = tipper(bars);
+  its.forEach((it, i) => { const x0 = X(it.a.date), x1 = X(it.b.date), w = Math.max(2, x1 - x0 - 2), v = rates[i], y = YB(v);
+    const hgt = Math.max(0, YB(0) - y);
+    s.append(sv("path", {class:"br", d: hgt < 4 ? `M${x0+1} ${YB(0)}h${w}v${-hgt}h${-w}z` : `M${x0+1} ${YB(0)}v${-(hgt-3)}q0 -3 3 -3h${Math.max(0,w-6)}q3 0 3 3v${hgt-3}z`}));
+    const hit = sv("rect", {class:"hit", x:x0, y:T, width:Math.max(6, x1 - x0), height:H - T - B});
+    hit.addEventListener("mouseenter", () => { tip2.hidden = false; tip2.textContent = `${fmtD(it.a.date)} → ${fmtD(it.b.date)} · ${nf1.format(it.h)} h en ${days(it)} j · ${nf1.format(v)} h/j · ${it.act}`;
+      tip2.style.left = ((x0 + x1) / 2 / W * bars.clientWidth) + "px"; tip2.style.top = (y / H * bars.clientHeight) + "px"; });
+    hit.addEventListener("mouseleave", () => tip2.hidden = true); s.append(hit); });
+  if (c.moy != null){ const ya = YB(c.moy); s.append(sv("line", {class:"av", x1:L, x2:W-R, y1:ya, y2:ya}), sv("text", {class:"avl", x:W-R, y:ya-5, "text-anchor":"end"}, "moyenne " + nf1.format(c.moy) + " h")); }
+  bars.prepend(s);
+}
+
+// ------------------------------------------------------------------ export
+function exportCsv(){
+  const D = current(), n = v => String(Math.round(v * 100) / 100).replace(".", ",");
+  const lines = [["Chariot","Fournisseur","Site","Activité","Date début","Relevé début","Date fin","Relevé fin","Heures","Jours calendaires","Jours ouvrés","Heures / jour","Statut"]];
+  D.ok.concat(D.bad).sort((x, y) => x.chariot.localeCompare(y.chariot, "fr", {numeric:true}) || (x.a.date < y.a.date ? -1 : 1)).forEach(it => lines.push([
+    it.chariot, it.four, it.site, it.act, it.a.date, n(it.a.horametre), it.b.date, n(it.b.horametre), n(it.h), it.j, it.jo,
+    days(it) > 0 && !it.pb ? n(it.h / days(it)) : "", it.pb ? "Exclu : " + it.pb : "OK"]));
+  lines.push([]); lines.push(["Synthèse par chariot","","","Activité principale","","Dernier relevé","","","Heures","Jours","","Moyenne / jour"]);
+  D.chariots.forEach(c => lines.push([c.chariot, c.four, c.site, c.actp, "", n(c.last), "", "", n(c.h), c.j, "", c.moy == null ? "" : n(c.moy)]));
+  lines.push([]); lines.push(["Synthèse par activité","","","","","","","","Heures","Jours-chariot","","Moyenne / jour"]);
+  D.activites.forEach(a => lines.push([a.act, "", "", "", "", "", "", "", n(a.h), n(a.j), "", a.moy == null ? "" : n(a.moy)]));
+  const csv = "﻿" + lines.map(l => l.map(v => { v = v == null ? "" : String(v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(";")).join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"}));
+  a.download = `horametres-${new Date().toISOString().slice(0,10)}.csv`; document.body.append(a); a.click(); a.remove();
+}
+
+// ------------------------------------------------------------------ événements
+$("periode").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  $("periode").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); S.jours = +b.dataset.j; DEMO ? render() : load(); });
+$("base").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  $("base").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); S.base = b.dataset.b; render(); });
+["fSite","fFour","fAct"].forEach(id => $(id).addEventListener("input", render));
+document.querySelector("#tChar thead").addEventListener("click", e => { const th = e.target.closest("th"); if (!th) return;
+  const k = th.dataset.k; S.sort = {k, dir: S.sort.k === k ? -S.sort.dir : (["chariot","four","actp"].includes(k) ? 1 : -1)}; render(); });
+$("csv").addEventListener("click", exportCsv);
+if (DEMO){ $("demoBanner").hidden = false; $("csv").hidden = true; document.querySelectorAll(".nav a").forEach(a => a.removeAttribute("href")); }
+load();
+setInterval(() => { if (!DEMO && !document.hidden) load(); }, 60000);
+</script>
+</body>
+</html>

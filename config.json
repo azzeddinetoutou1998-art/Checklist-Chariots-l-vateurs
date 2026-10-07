@@ -1,0 +1,31 @@
+{
+  "nom_entreprise": "",
+  "sites": [],
+  "activites": [],
+  "fournisseurs": ["MANULOC : CHARIOT JAUNE", "MANUCHAR : CHARIOT ROUGE"],
+  "points": [
+    "Pas de fuites de liquide",
+    "Niveau d'eau des batteries (si électrique)",
+    "Fixation des bonbonnes, état du tuyau de gaz et du détendeur (si gaz)",
+    "Niveaux d'huile (chariots à gaz)",
+    "Accrochage des fourches (chariots MANUCHAR : présence de l'écrou métal)",
+    "Parallélisme des bras de fourches",
+    "Fonctionnement des avertisseurs sonores",
+    "Fonctionnement du gyrophare",
+    "Fonctionnement de l'éclairage",
+    "État du rétroviseur",
+    "Élévation du mât",
+    "Inclinaison du mât",
+    "Autres mouvements",
+    "Essais de freinage",
+    "Frein de parc",
+    "Ceinture de sécurité",
+    "État des essuie-glaces",
+    "Siège : fixation et réglage",
+    "État de la carrosserie",
+    "Serrage des vis sur le pare-brise et les fenêtres",
+    "Bonne tenue des éclairages Redline à l'arrière",
+    "État des pneumatiques",
+    "Bridage (chariots bridés) : 5 km/h intérieur, 10 km/h extérieur, test de vitesse"
+  ]
+}

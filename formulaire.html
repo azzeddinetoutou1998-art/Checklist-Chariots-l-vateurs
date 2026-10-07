@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f2bd1d">
+<title>Checklist prise de poste</title>
+<style>
+[hidden]{display:none!important}
+:root{
+  --bg:#eef0eb; --card:#ffffff; --fg:#161a15; --muted:#5a6157; --line:#cfd4ca;
+  --accent:#f2bd1d; --accent-ink:#161a15;
+  --ok:#1e7a3c; --ok-bg:#e3f3e8; --ko:#b42318; --ko-bg:#fde8e6; --na:#5a6157; --na-bg:#e9ebe6;
+  --font:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --cond:"Arial Narrow","Roboto Condensed","Segoe UI",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121511; --card:#1c201b; --fg:#eceee8; --muted:#a0a79c; --line:#343a32;
+  --accent:#f2bd1d; --accent-ink:#121511;
+  --ok:#6fd38f; --ok-bg:#16301f; --ko:#ff8a80; --ko-bg:#3a1714; --na:#c3c8bf; --na-bg:#2a2e28; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.45 var(--font);padding-bottom:env(safe-area-inset-bottom,0px)}
+header{background:var(--accent);color:var(--accent-ink);padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px;
+  background-image:repeating-linear-gradient(-45deg,transparent 0 18px,rgba(0,0,0,.9) 18px 30px);background-size:100% 8px;background-repeat:no-repeat;background-position:bottom}
+header h1{margin:0;font:700 1.6rem/1.1 var(--cond);text-transform:uppercase;letter-spacing:.02em}
+header p{margin:4px 0 6px;font-size:.92rem;font-weight:600}
+main{max-width:640px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:16px}
+fieldset{border:0;margin:0;padding:16px;background:var(--card);border-radius:10px;display:flex;flex-direction:column;gap:14px;min-width:0}
+legend{float:left;width:100%;padding:0;margin:0 0 2px;font:700 1.05rem/1.2 var(--cond);text-transform:uppercase;letter-spacing:.05em}
+legend + *{clear:both}
+label.f{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.95rem}
+input[type=text],input[type=date],input[type=number],select,textarea{font:inherit;font-weight:400;width:100%;padding:12px;border:1.5px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);min-height:48px}
+textarea{min-height:110px;resize:vertical}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:420px){.row2{grid-template-columns:1fr}}
+.hint{font-size:.85rem;color:var(--muted);font-weight:400}
+.pt{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
+.pt:first-of-type{border-top:0;padding-top:0}
+.pt .q{font-weight:600}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{display:flex;align-items:center;justify-content:center;min-height:46px;border:1.5px solid var(--line);border-radius:8px;font-weight:600;font-size:.92rem;cursor:pointer;text-align:center;padding:4px;user-select:none}
+.seg input:focus-visible + label{outline:3px solid var(--accent);outline-offset:2px}
+.seg input[value=C]:checked + label{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.seg input[value=NC]:checked + label{background:var(--ko-bg);border-color:var(--ko);color:var(--ko)}
+.seg input[value=NA]:checked + label{background:var(--na-bg);border-color:var(--na);color:var(--na)}
+.seg input[value=OUI]:checked + label{background:var(--ok);border-color:var(--ok);color:#fff}
+.seg input[value=NON]:checked + label{background:var(--ko);border-color:var(--ko);color:#fff}
+.seg.two{grid-template-columns:1fr 1fr}
+.seg.two label{min-height:58px;font-size:1.1rem}
+.missing{box-shadow:0 0 0 2px var(--ko);border-radius:8px}
+.counter{font-size:.9rem;color:var(--muted)}
+button.go{font:700 1.15rem var(--cond);text-transform:uppercase;letter-spacing:.04em;background:var(--fg);color:var(--bg);border:0;border-radius:10px;min-height:58px;cursor:pointer}
+button.go:disabled{opacity:.6}
+.msg{padding:12px 14px;border-radius:8px;font-weight:600}
+.msg.err{background:var(--ko-bg);color:var(--ko)}
+.msg.info{background:var(--na-bg);color:var(--fg)}
+.ph{display:flex;flex-wrap:wrap;gap:8px}
+.ph .t{position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;background:var(--na-bg)}
+.ph .t img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .t button{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.7);color:#fff;font-size:16px;line-height:28px;cursor:pointer;padding:0}
+.addph{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;border:1.5px dashed var(--muted);border-radius:8px;font-weight:600;cursor:pointer;padding:8px 14px}
+.addph input{position:absolute;opacity:0;width:1px;height:1px}
+.addph:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.done{text-align:center;padding:28px 16px;border-radius:12px;display:flex;flex-direction:column;gap:10px;align-items:center}
+.done.ok{background:var(--ok-bg);color:var(--ok)}
+.done.ko{background:var(--ko-bg);color:var(--ko)}
+.done h2{margin:0;font:700 1.7rem/1.15 var(--cond);text-transform:uppercase}
+.done p{margin:0;color:var(--fg)}
+.done button{font:600 1rem var(--font);padding:12px 18px;border-radius:8px;border:1.5px solid currentColor;background:transparent;color:inherit;cursor:pointer;min-height:48px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Checklist prise de poste</h1>
+  <p id="entreprise">Contrôle obligatoire avant d'utiliser le chariot</p>
+</header>
+<main>
+  <div id="queueMsg" class="msg info" hidden></div>
+  <form id="f" novalidate>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <fieldset>
+        <legend>Identification</legend>
+        <div class="row2">
+          <label class="f">Date<input id="date" type="date" required></label>
+          <label class="f">Numéro du chariot<input id="chariot" type="text" inputmode="numeric" autocomplete="off" placeholder="Scannez ou tapez le numéro" required>
+            <span class="hint" id="chHint"></span></label>
+        </div>
+        <label class="f">Nom et prénom du cariste<input id="cariste" type="text" autocomplete="name" required></label>
+        <label class="f">Horamètre<input id="horametre" type="text" inputmode="decimal" autocomplete="off" placeholder="ex. 4521,5" required>
+          <span class="hint" id="horaHint"></span></label>
+        <div class="row2">
+          <label class="f">Site<span id="siteBox"></span></label>
+          <label class="f">Activité<span id="activiteBox"></span></label>
+        </div>
+        <label class="f">Fournisseur<select id="fournisseur" required></select></label>
+      </fieldset>
+
+      <fieldset id="points">
+        <legend>Points de contrôle</legend>
+        <span class="counter" id="counter"></span>
+      </fieldset>
+
+      <fieldset>
+        <legend>Bilan</legend>
+        <label class="f">Commentaire, pannes constatées…
+          <textarea id="commentaire" maxlength="2000"></textarea>
+          <span class="hint" id="comHint">Obligatoire si un point est non conforme.</span>
+        </label>
+        <div class="f" style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-weight:600;font-size:.95rem">Photos de la panne <span class="hint">(facultatif, 4 maximum)</span></span>
+          <div class="ph" id="ph"></div>
+          <label class="addph" id="addph"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg>Prendre une photo<input id="photo" type="file" accept="image/*" capture="environment"></label>
+        </div>
+        <div class="pt" id="secBlock">
+          <span class="q">Mon chariot peut rouler en toute sécurité ?</span>
+          <div class="seg two">
+            <input type="radio" name="securite" id="sec-oui" value="OUI"><label for="sec-oui">OUI</label>
+            <input type="radio" name="securite" id="sec-non" value="NON"><label for="sec-non">NON</label>
+          </div>
+        </div>
+      </fieldset>
+
+      <div id="err" class="msg err" hidden></div>
+      <button class="go" id="send" type="submit">Envoyer la checklist</button>
+    </div>
+  </form>
+  <div id="done" hidden></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const QKEY = "checklist_file_attente", MKEY = "checklist_memo";
+let CFG = null, PHOTOS = [], HORA_WARN = "", HORA_OK = false, LAST = {};
+
+/** Accepte un numéro tapé, un code-barres scanné ou l'adresse d'un QR-code chariot scanné au gun. */
+function normChariot(){
+  const f = $("chariot"), v = f.value.trim(), hint = $("chHint"); hint.textContent = ""; hint.style.color = "";
+  if (!v) return;
+  const m = v.match(/chariot=(\d+)/i);
+  if (m) f.value = m[1];
+  else if (/^\D*\d+\D*$/.test(v) && !/[\/:]/.test(v)) f.value = v.replace(/\D/g, "");
+  else if (/[\/:]/.test(v)){ f.value = ""; hint.textContent = "Vous avez scanné l'affiche générale : scannez l'étiquette collée sur le chariot."; hint.style.color = "var(--ko)"; return; }
+  if (f.value) { hint.textContent = "Chariot " + f.value; checkHora(); }
+}
+
+async function checkHora(){
+  const ch = $("chariot").value.trim(), v = parseFloat($("horametre").value.replace(",", ".")), hint = $("horaHint");
+  HORA_WARN = ""; HORA_OK = false; hint.textContent = ""; hint.style.color = "";
+  if (!/^\d+$/.test(ch)) return;
+  if (!(ch in LAST)){ try { LAST[ch] = await (await fetch("/horametre/" + ch)).json(); } catch(e){ LAST[ch] = {}; } }
+  const l = LAST[ch]; if (l.horametre == null) return;
+  const dd = l.date.split("-").reverse().slice(0,2).join("/");
+  hint.textContent = `Dernier relevé de ce chariot : ${String(l.horametre).replace(".", ",")} h le ${dd}`;
+  if (isNaN(v)) return;
+  const jours = Math.max(1, Math.round((new Date($("date").value) - new Date(l.date)) / 864e5));
+  if (v < l.horametre) HORA_WARN = `L'horamètre saisi est inférieur au dernier relevé (${String(l.horametre).replace(".", ",")} h le ${dd}). Vérifiez le compteur.`;
+  else if (v - l.horametre > 24 * jours) HORA_WARN = `Écart de ${Math.round(v - l.horametre)} h depuis le ${dd} : vérifiez le chiffre saisi.`;
+  if (HORA_WARN){ hint.textContent = HORA_WARN; hint.style.color = "var(--ko)"; }
+}
+const MAXPH = 4;
+
+function compress(file){
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const m = 1600, k = Math.min(1, m / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      let q = .75, d = c.toDataURL("image/jpeg", q);
+      while (d.length > 1.9e6 && q > .35){ q -= .1; d = c.toDataURL("image/jpeg", q); }
+      resolve(d);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(); };
+    img.src = url;
+  });
+}
+function drawPhotos(){
+  const box = $("ph"); box.replaceChildren();
+  PHOTOS.forEach((d, i) => {
+    const t = el("div", {class:"t"}), im = el("img", {src:d, alt:"Photo " + (i+1)}), b = el("button", {type:"button", "aria-label":"Supprimer la photo " + (i+1)}, "×");
+    b.onclick = () => { PHOTOS.splice(i, 1); drawPhotos(); };
+    t.append(im, b); box.append(t);
+  });
+  $("addph").hidden = PHOTOS.length >= MAXPH;
+  $("addph").lastChild.previousSibling.textContent = PHOTOS.length ? "Ajouter une photo" : "Prendre une photo";
+}
+
+function store(k, v){ try{ v === undefined ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+function today(){ const d = new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function el(tag, attrs, text){ const e = document.createElement(tag); for (const k in attrs||{}) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; }
+
+function choiceField(id, list){
+  if (list && list.length){
+    const s = el("select", {id, required:""}); s.append(el("option", {value:""}, "Choisir…"));
+    list.forEach(v => s.append(el("option", {value:v}, v))); return s;
+  }
+  return el("input", {id, type:"text", required:""});
+}
+
+function build(){
+  if (CFG.nom_entreprise) $("entreprise").textContent = CFG.nom_entreprise + " · contrôle obligatoire avant d'utiliser le chariot";
+  $("siteBox").replaceWith(choiceField("site", CFG.sites));
+  $("activiteBox").replaceWith(choiceField("activite", CFG.activites));
+  const f = $("fournisseur"); f.append(el("option", {value:""}, "Choisir…"));
+  CFG.fournisseurs.forEach(v => f.append(el("option", {value:v}, v)));
+  const box = $("points");
+  CFG.points.forEach((p, i) => {
+    const d = el("div", {class:"pt", "data-point":p}); d.append(el("span", {class:"q"}, p));
+    const seg = el("div", {class:"seg", role:"radiogroup", "aria-label":p});
+    [["C","Conforme"],["NC","Non conforme"],["NA","Non applicable"]].forEach(([v, t]) => {
+      seg.append(el("input", {type:"radio", name:"p"+i, id:"p"+i+v, value:v}), el("label", {for:"p"+i+v}, t));
+    });
+    d.append(seg); box.append(d);
+  });
+  box.addEventListener("change", count); count();
+  $("date").value = today();
+  const qs = new URLSearchParams(location.search);
+  if (qs.get("chariot")) $("chariot").value = qs.get("chariot").replace(/\D/g, "");
+  const m = load(MKEY, {});
+  ["cariste","site","fournisseur","activite"].forEach(k => { if (m[k]) $(k).value = m[k]; });
+  document.addEventListener("change", majCommentaire);
+  // Guns / douchettes : le scan arrive comme une saisie clavier, souvent suivie d'Entrée.
+  $("chariot").addEventListener("change", normChariot);
+  let scanT; $("chariot").addEventListener("input", () => { clearTimeout(scanT); scanT = setTimeout(normChariot, 400); });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Enter" || !e.target.matches("input:not([type=radio]):not([type=file])")) return;
+    e.preventDefault(); if (e.target.id === "chariot") normChariot();
+    const fields = [...document.querySelectorAll("#f input:not([type=radio]):not([type=file]), #f select")].filter(x => x.offsetParent);
+    const next = fields.slice(fields.indexOf(e.target) + 1).find(x => !x.value) || fields[fields.indexOf(e.target) + 1];
+    if (next) next.focus(); else e.target.blur();
+  });
+  if (!$("chariot").value) $("chariot").focus();
+  ["chariot","horametre","date"].forEach(id => $(id).addEventListener("change", checkHora));
+  checkHora();
+  $("photo").addEventListener("change", async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f || PHOTOS.length >= MAXPH) return;
+    try { PHOTOS.push(await compress(f)); drawPhotos(); }
+    catch(_) { $("err").textContent = "Photo illisible, reprenez-la."; $("err").hidden = false; }
+  });
+}
+
+function count(){
+  const n = CFG.points.length, done = document.querySelectorAll('#points input:checked').length;
+  const nc = document.querySelectorAll('#points input[value=NC]:checked').length;
+  $("counter").textContent = `${done} / ${n} points renseignés` + (nc ? ` · ${nc} non conforme${nc>1?"s":""}` : "");
+}
+function majCommentaire(){
+  const need = document.querySelector('#points input[value=NC]:checked') || $("sec-non").checked;
+  $("comHint").textContent = need ? "Obligatoire : décrivez l'anomalie." : "Obligatoire si un point est non conforme.";
+}
+
+function collect(){
+  const controles = {};
+  CFG.points.forEach((p, i) => { const c = document.querySelector(`input[name=p${i}]:checked`); if (c) controles[p] = c.value; });
+  const sec = document.querySelector("input[name=securite]:checked");
+  return { date:$("date").value, chariot:$("chariot").value.trim(), cariste:$("cariste").value.trim(),
+    horametre:$("horametre").value.trim(), site:$("site").value.trim(), fournisseur:$("fournisseur").value,
+    activite:$("activite").value.trim(), controles, photos: PHOTOS.slice(), commentaire:$("commentaire").value.trim(), securite: sec ? sec.value : "" };
+}
+
+function check(d){
+  document.querySelectorAll(".missing").forEach(e => e.classList.remove("missing"));
+  const bad = [];
+  const mark = (node, msg) => { node.classList.add("missing"); bad.push([node, msg]); };
+  if (!d.date) mark($("date"), "Indiquez la date.");
+  if (!/^\d+$/.test(d.chariot)) mark($("chariot"), "Numéro du chariot : chiffres uniquement, numéro complet.");
+  if (d.cariste.length < 3) mark($("cariste"), "Indiquez votre nom et prénom.");
+  if (!/^\d+([.,]\d+)?$/.test(d.horametre)) mark($("horametre"), "Horamètre : indiquez un nombre.");
+  if (!d.site) mark($("site"), "Indiquez le site.");
+  if (!d.activite) mark($("activite"), "Indiquez l'activité.");
+  if (!d.fournisseur) mark($("fournisseur"), "Choisissez le fournisseur.");
+  CFG.points.forEach(p => { if (!d.controles[p]) mark(document.querySelector(`[data-point="${CSS.escape(p)}"]`), "Tous les points de contrôle doivent être renseignés."); });
+  if (!d.securite) mark($("secBlock"), "Indiquez si le chariot peut rouler en sécurité.");
+  const nc = Object.values(d.controles).includes("NC");
+  if ((nc || d.securite === "NON") && d.commentaire.length < 3) mark($("commentaire"), "Décrivez l'anomalie dans le commentaire.");
+  return bad;
+}
+
+async function post(d){
+  const r = await fetch("/api/checklist", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(d)});
+  if (r.status === 201) return {ok:true};
+  let j = {}; try { j = await r.json(); } catch(e){}
+  return {ok:false, refuse:true, msg: j.erreur || "Envoi refusé."};
+}
+
+function showDone(d, offline){
+  $("f").hidden = true;
+  const ko = d.securite === "NON", box = $("done");
+  box.className = "done " + (ko ? "ko" : "ok"); box.hidden = false; box.replaceChildren();
+  box.append(el("h2", {}, ko ? "Ne pas utiliser ce chariot" : "Checklist enregistrée"));
+  box.append(el("p", {}, ko ? `Chariot ${d.chariot} : prévenez immédiatement votre responsable.` : `Chariot ${d.chariot} · merci ${d.cariste.split(" ")[0]}, bonne prise de poste.`));
+  if (offline) box.append(el("p", {}, "Pas de réseau : la checklist est gardée sur ce téléphone et sera envoyée automatiquement."));
+  const b = el("button", {type:"button"}, "Nouvelle checklist");
+  b.onclick = () => { location.href = location.pathname + (new URLSearchParams(location.search).get("chariot") ? location.search : ""); };
+  box.append(b); window.scrollTo(0, 0);
+}
+
+$("f").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const d = collect(), bad = check(d), err = $("err");
+  if (bad.length){ err.textContent = bad[0][1]; err.hidden = false; bad[0][0].scrollIntoView({behavior:"smooth", block:"center"}); return; }
+  if (!HORA_OK) await checkHora();
+  if (HORA_WARN && !HORA_OK){
+    HORA_OK = true; err.textContent = HORA_WARN + " Si le chiffre est juste, appuyez à nouveau pour confirmer.";
+    err.hidden = false; $("send").textContent = "Confirmer et envoyer"; $("horametre").classList.add("missing");
+    $("horametre").scrollIntoView({behavior:"smooth", block:"center"}); return;
+  }
+  err.hidden = true; $("send").disabled = true; $("send").textContent = "Envoi…";
+  store(MKEY, {cariste:d.cariste, site:d.site, fournisseur:d.fournisseur, activite:d.activite});
+  try {
+    const r = await post(d);
+    if (r.ok){ PHOTOS = []; return showDone(d, false); }
+    err.textContent = r.msg; err.hidden = false;
+  } catch(e) {
+    const q = load(QKEY, []); q.push(d);
+    let saved = true; try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch(_) { saved = false; }
+    if (!saved){ q[q.length-1] = Object.assign({}, d, {photos:[], commentaire: d.commentaire + " [photos non envoyées : pas de réseau]"}); store(QKEY, q); }
+    PHOTOS = []; return showDone(d, true);
+  } finally { $("send").disabled = false; $("send").textContent = "Envoyer la checklist"; }
+});
+
+async function flushQueue(){
+  let q = load(QKEY, []); if (!q.length) return;
+  const rest = [];
+  for (const d of q){ try { const r = await post(d); if (!r.ok && !r.refuse) rest.push(d); } catch(e){ rest.push(d); } }
+  store(QKEY, rest.length ? rest : undefined);
+  const m = $("queueMsg");
+  if (rest.length){ m.textContent = `${rest.length} checklist(s) en attente d'envoi (pas de réseau).`; m.hidden = false; }
+  else { m.textContent = "Les checklists en attente ont été envoyées."; m.hidden = false; setTimeout(() => m.hidden = true, 5000); }
+}
+window.addEventListener("online", flushQueue);
+
+fetch("/config").then(r => r.json()).then(c => { CFG = c; build(); flushQueue(); })
+  .catch(() => { $("err").textContent = "Impossible de charger la checklist. Vérifiez le réseau puis rechargez la page."; $("err").hidden = false; $("send").disabled = true; });
+</script>
+</body>
+</html>
