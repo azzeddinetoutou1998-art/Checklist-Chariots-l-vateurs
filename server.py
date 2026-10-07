@@ -18,7 +18,8 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-STATIC = os.path.join(ROOT, "static")
+# Pages dans le dossier static/, ou à la racine si les fichiers ont été déposés à plat (dépôt GitHub par glisser-déposer)
+STATIC = os.path.join(ROOT, "static") if os.path.isdir(os.path.join(ROOT, "static")) else ROOT
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(ROOT, "data"))
 DB_PATH = os.path.join(DATA_DIR, "checklists.db")
 PHOTOS_DIR = os.path.join(DATA_DIR, "photos")

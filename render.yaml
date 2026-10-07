@@ -1,0 +1,17 @@
+# Déploiement Render (Blueprint) : New > Blueprint > choisir ce dépôt GitHub
+services:
+  - type: web
+    name: checklist-caristes
+    runtime: docker
+    plan: starter          # offre payante obligatoire : l'offre gratuite efface les données
+    region: frankfurt      # hébergement en Europe
+    healthCheckPath: /sante
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false        # Render vous demandera de le saisir
+      - key: DATA_DIR
+        value: /data
+    disk:
+      name: donnees
+      mountPath: /data     # base + photos, conservées entre les redémarrages
+      sizeGB: 1
