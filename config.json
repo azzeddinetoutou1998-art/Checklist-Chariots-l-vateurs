@@ -51,5 +51,14 @@
     "Bonne tenue des éclairages Redline à l'arrière",
     "État des pneumatiques",
     "Bridage (chariots bridés) : 5 km/h intérieur, 10 km/h extérieur, test de vitesse"
-  ]
+  ],
+  "alertes": {
+    "points_critiques": [
+      "Fonctionnement du gyrophare",
+      "Essais de freinage",
+      "Frein de parc",
+      "Bridage (chariots bridés) : 5 km/h intérieur, 10 km/h extérieur, test de vitesse"
+    ],
+    "si_chariot_non_roulant": true
+  }
 }

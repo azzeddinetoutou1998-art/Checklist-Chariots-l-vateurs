@@ -30,6 +30,14 @@ body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
   background-image:repeating-linear-gradient(-45deg,transparent 0 16px,rgba(0,0,0,.9) 16px 26px);background-size:100% 6px;background-repeat:no-repeat;background-position:bottom}
 .top-in{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between}
 .top h1{margin:0;font:700 1.45rem/1.1 var(--cond);text-transform:uppercase;letter-spacing:.02em}
+.topr{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px}
+.stock{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.85rem;cursor:default}
+.stock .g{width:90px;height:8px;border-radius:4px;background:rgba(0,0,0,.18);overflow:hidden}
+.stock .g i{display:block;height:100%;background:var(--brand-ink);border-radius:0 4px 4px 0}
+.stock.warn .g i{background:#9a6700} .stock.crit .g i{background:#b42318}
+.stock.warn b,.stock.crit b{background:var(--brand-ink);color:var(--brand);padding:1px 7px;border-radius:9px}
+.alert{background:var(--warn-bg);color:var(--fg);border-left:5px solid var(--warn);padding:10px 14px;border-radius:8px;font-size:.9rem}
+.alert.crit{background:var(--crit-bg);border-left-color:var(--crit)}
 .live{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.85rem}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px rgba(30,122,60,.25)}
 .dot.off{background:var(--crit);box-shadow:none}
@@ -111,6 +119,9 @@ td.wrap{white-space:normal;min-width:200px;max-width:380px;overflow-wrap:anywher
 .lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:9;padding:16px;cursor:zoom-out}
 .lb img{max-width:100%;max-height:100%;border-radius:6px}
 .lb span{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:16px;color:#fff;font-weight:700}
+.mail{font-size:.8rem;color:var(--muted)}
+.mail.ko{color:var(--crit);font-weight:700}
+.toast.info{background:var(--fg);color:var(--bg)}
 .toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--crit);color:#fff;font-weight:700;padding:12px 18px;border-radius:8px;z-index:5;max-width:calc(100% - 32px)}
 .demo{background:var(--accent-soft);color:var(--fg);padding:10px 14px;border-radius:8px;font-size:.88rem}
 </style>
@@ -118,11 +129,16 @@ td.wrap{white-space:normal;min-width:200px;max-width:380px;overflow-wrap:anywher
 <body>
 <div class="top"><div class="top-in">
   <h1>Prises de poste · caristes</h1>
-  <div class="live"><span class="dot" id="dot"></span><span id="liveTxt">Connexion…</span></div>
+  <div class="topr">
+    <div class="stock" id="stock" hidden><span>Stockage</span><span class="g"><i id="stockBar"></i></span><b id="stockTxt"></b></div>
+    <div class="live"><span class="dot" id="dot"></span><span id="liveTxt">Connexion…</span></div>
+  </div>
 </div></div>
 
 <div class="wrap">
   <div class="demo" id="demoBanner" hidden>Démonstration avec des données d'exemple. Une nouvelle checklist arrive toutes les 30 secondes pour montrer la mise à jour en direct.</div>
+
+  <div class="alert" id="stockAlert" hidden></div>
 
   <div class="filters" role="toolbar" aria-label="Filtres">
     <div class="seg" id="periode">
@@ -138,6 +154,7 @@ td.wrap{white-space:normal;min-width:200px;max-width:380px;overflow-wrap:anywher
     <a class="btn" id="csv" href="/export.csv?jours=7">Exporter (Excel)</a>
     <a class="btn" href="/horametres">Horamètres</a>
     <a class="btn" href="/qr">QR-codes</a>
+    <button class="btn" id="testMail" type="button">Tester l'alerte e-mail</button>
   </div>
 
   <section class="kpis" aria-label="Indicateurs">
@@ -233,7 +250,7 @@ async function setStatut(id, statut, note){
   const res = await fetch(`/api/checklists/${id}/suivi`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({statut, note})});
   if (res.ok){ Object.assign(r, {statut, note_responsable:note}); render(); } else toast("Mise à jour impossible, réessayez.");
 }
-let tt; function toast(t){ const e = $("toast"); e.textContent = t; e.hidden = false; clearTimeout(tt); tt = setTimeout(() => e.hidden = true, 7000);
+let tt; function toast(t, info){ const e = $("toast"); e.textContent = t; e.hidden = false; e.className = "toast" + (info ? " info" : ""); clearTimeout(tt); tt = setTimeout(() => e.hidden = true, 7000);
   document.title = "(!) Tableau de bord caristes"; setTimeout(() => document.title = "Tableau de bord caristes", 7000); }
 
 // ------------------------------------------------------------------ filtres
@@ -294,6 +311,11 @@ function renderIssues(open){
     if (r.commentaire) d.append(el("p", "quote", r.commentaire));
     const th = thumbs(r); if (th) d.append(th);
     if (r.note_responsable) d.append(el("span", "note", "Note : " + r.note_responsable));
+    if (r.alerte){ const a = r.alerte, ok = a.startsWith("envoyee");
+      const txt = ok ? "Alerte e-mail envoyée à " + new Date(a.slice(8)).toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"})
+        : a === "en_cours" ? "Alerte e-mail en cours d'envoi…" : a === "non_configuree" ? "Alerte e-mail non envoyée : envoi non configuré dans Render"
+        : "Échec de l'alerte e-mail : " + a.slice(6);
+      d.append(el("span", "mail" + (ok || a === "en_cours" ? "" : " ko"), "✉ " + txt)); }
     const a = el("div", "acts");
     const inp = el("input"); inp.type = "text"; inp.id = "note-" + r.id; inp.placeholder = "Note (ex. dépanneur appelé)"; inp.value = r.note_responsable || ""; inp.setAttribute("aria-label", "Note pour le chariot " + r.chariot);
     a.append(inp);
@@ -389,6 +411,31 @@ if (DEMO){
   let n = 0;
   setInterval(() => { const g = window.DEMO_DATA.gen; if (g) demoQueue.push(g(n++)); }, 30000);
 }
+
+$("testMail").addEventListener("click", async () => {
+  if (DEMO) return toast("E-mail de test envoyé (démonstration).", true);
+  const b = $("testMail"); b.disabled = true; b.textContent = "Envoi…";
+  try { const r = await fetch("/api/alerte-test", {method:"POST"}); const j = await r.json(); toast(j.message || j.erreur, r.ok); }
+  catch(e){ toast("Serveur injoignable, réessayez."); }
+  b.disabled = false; b.textContent = "Tester l'alerte e-mail";
+});
+
+// ------------------------------------------------------------------ stockage
+const mo = b => b >= 1e9 ? (b / 1e9).toLocaleString("fr-FR", {maximumFractionDigits:1}) + " Go" : Math.round(b / 1e6).toLocaleString("fr-FR") + " Mo";
+async function stockage(){
+  let d;
+  if (DEMO) d = {total:1e9, utilise:1.86e8, libre:8.14e8, base:2.1e6, photos:1.83e8, nb_photos:612};
+  else { try { const r = await fetch("/api/stockage", {cache:"no-store"}); if (!r.ok) return; d = await r.json(); } catch(e){ return; } }
+  const cap = d.utilise + d.libre, pct = cap ? Math.round(d.utilise / cap * 100) : 0, lvl = pct >= 90 ? "crit" : pct >= 80 ? "warn" : "";
+  const box = $("stock"); box.hidden = false; box.className = "stock " + lvl;
+  $("stockBar").style.width = Math.min(100, pct) + "%"; $("stockTxt").textContent = pct + " %";
+  box.title = `${mo(d.utilise)} utilisés sur ${mo(cap)} · ${mo(d.libre)} libres\nPhotos : ${d.nb_photos} (${mo(d.photos)}) · Base : ${mo(d.base)}`;
+  const a = $("stockAlert");
+  if (lvl){ a.hidden = false; a.className = "alert " + lvl;
+    a.textContent = `Stockage rempli à ${pct} % (${mo(d.libre)} libres). Augmentez la taille du disque dans Render : service checklist-caristes, onglet Disk.` + (lvl === "crit" ? " Au-delà de 100 %, les nouvelles checklists seront refusées." : ""); }
+  else a.hidden = true;
+}
+stockage(); setInterval(stockage, 300000);
 
 tick(); setInterval(tick, 5000); setInterval(setLive, 5000);
 </script>

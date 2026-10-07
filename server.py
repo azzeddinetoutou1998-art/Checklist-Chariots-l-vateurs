@@ -12,7 +12,10 @@ Variables d'environnement :
   PORT             port d'écoute (défaut 8080)
   DATA_DIR         dossier de la base de données (défaut ./data)
 """
-import base64, csv, hmac, io, json, os, re, secrets, sqlite3, threading, time
+import base64, csv, hmac, io, json, os, re, secrets, shutil, smtplib, sqlite3, ssl, threading, time
+from email.message import EmailMessage
+from email.utils import formataddr, make_msgid
+from html import escape
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -24,7 +27,7 @@ DATA_DIR = os.environ.get("DATA_DIR", os.path.join(ROOT, "data"))
 DB_PATH = os.path.join(DATA_DIR, "checklists.db")
 PHOTOS_DIR = os.path.join(DATA_DIR, "photos")
 PORT = int(os.environ.get("PORT", "8080"))
-PASSWORD = os.environ.get("ADMIN_PASSWORD") or ""
+PASSWORD = (os.environ.get("ADMIN_PASSWORD") or "").strip()   # espaces ou retour à la ligne collés par erreur
 GENERATED_PASSWORD = False
 if not PASSWORD:
     PASSWORD = secrets.token_urlsafe(9)
@@ -40,6 +43,110 @@ MAX_PHOTO_BYTES = 2 * 1024 * 1024
 def load_config():
     with open(os.path.join(ROOT, "config.json"), encoding="utf-8") as f:
         return json.load(f)
+
+# --------------------------------------------------------------------------- alertes e-mail
+# Réglages dans Render (onglet Environment) :
+#   ALERTE_EMAILS   destinataires, séparés par des virgules
+#   SMTP_HOST, SMTP_PORT (587 par défaut), SMTP_USER, SMTP_PASSWORD, SMTP_FROM (adresse d'expédition)
+SMTP = {k: (os.environ.get(k) or "").strip() for k in ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM")}
+ALERTE_EMAILS = [a.strip() for a in (os.environ.get("ALERTE_EMAILS") or "").replace(";", ",").split(",") if a.strip()]
+PUBLIC_URL = (os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
+
+def alertes_actives():
+    return bool(ALERTE_EMAILS and SMTP["SMTP_HOST"] and (SMTP["SMTP_FROM"] or SMTP["SMTP_USER"]))
+
+def heure_paris(iso):
+    """Heure de Paris sans dépendance : UTC+2 de fin mars à fin octobre, sinon UTC+1."""
+    t = datetime.strptime(iso[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+    def dernier_dimanche(m):
+        d = datetime(t.year, m, 31 if m in (3, 10) else 30, 1, tzinfo=timezone.utc)
+        return d - timedelta(days=(d.weekday() + 1) % 7)
+    off = 2 if dernier_dimanche(3) <= t < dernier_dimanche(10) else 1
+    return (t + timedelta(hours=off)).strftime("%d/%m/%Y à %H:%M")
+
+def points_critiques_nok(controles, cfg):
+    crit = (cfg.get("alertes") or {}).get("points_critiques") or []
+    return [p for p in crit if controles.get(p) == "NC"]
+
+def construire_alerte(row, rid, photos, cfg):
+    controles = json.loads(row["controles"]) if isinstance(row["controles"], str) else row["controles"]
+    crit = points_critiques_nok(controles, cfg)
+    autres = [p for p, v in controles.items() if v == "NC" and p not in crit]
+    motif = ", ".join(crit) if crit else "chariot déclaré NON roulant"
+    noms = [re.sub(r"^(Fonctionnement (du|de la|de l'|des) |Essais de )", "", p.split("(")[0]).strip().capitalize() for p in crit]
+    court = (", ".join(noms[:3]) + (f" +{len(noms) - 3}" if len(noms) > 3 else "") + " NOK") if crit else "NE PEUT PAS ROULER"
+    sujet = f"[ALERTE SÉCURITÉ] Chariot {row['chariot']} – {court} – {row['site']}"
+    quand = heure_paris(row["horodateur"])
+    infos = [("Chariot", row["chariot"]), ("Site", row["site"]), ("Activité", row["activite"]),
+             ("Fournisseur", row["fournisseur"]), ("Cariste", row["cariste"]), ("Date et heure", quand),
+             ("Horamètre", f"{row['horametre']:g} h".replace(".", ",") if row["horametre"] is not None else ""),
+             ("Peut rouler en sécurité", row["securite"])]
+    lien = f"{PUBLIC_URL}/tableau" if PUBLIC_URL else ""
+    texte = [f"Alerte sécurité : {motif}", ""] + [f"{k} : {v}" for k, v in infos]
+    texte += ["", "Points de sécurité NON CONFORMES :"] + [f"  - {p}" for p in crit] if crit else []
+    if autres: texte += ["", "Autres points non conformes :"] + [f"  - {p}" for p in autres]
+    texte += ["", "Commentaire du cariste :", row["commentaire"] or "(aucun)"]
+    if photos: texte += ["", f"{len(photos)} photo(s) en pièce jointe."]
+    if lien: texte += ["", f"Tableau de bord : {lien}"]
+    li = lambda xs, col: "".join(f"<li style='margin:2px 0;color:{col}'><b>{escape(x)}</b></li>" for x in xs)
+    html = (f"<div style='font-family:Arial,sans-serif;font-size:15px;color:#171b16;max-width:620px'>"
+            f"<div style='background:#b42318;color:#fff;padding:14px 18px;font-size:18px;font-weight:bold'>"
+            f"ALERTE SÉCURITÉ – Chariot {escape(row['chariot'])}</div>"
+            f"<div style='border:1px solid #d9ddd5;border-top:0;padding:16px 18px'>"
+            + (f"<p style='margin:0 0 6px'><b>Points de sécurité non conformes :</b></p><ul style='margin:0 0 12px'>{li(crit, '#b42318')}</ul>" if crit else "")
+            + ("<p style='margin:0 0 12px;color:#b42318'><b>Le cariste a déclaré que le chariot NE PEUT PAS rouler en sécurité.</b></p>" if row["securite"] == "NON" else "")
+            + (f"<p style='margin:0 0 6px'>Autres points non conformes :</p><ul style='margin:0 0 12px'>{li(autres, '#171b16')}</ul>" if autres else "")
+            + "<table style='border-collapse:collapse;margin:4px 0 12px'>"
+            + "".join(f"<tr><td style='padding:3px 14px 3px 0;color:#5b6358'>{escape(k)}</td><td style='padding:3px 0'><b>{escape(str(v))}</b></td></tr>" for k, v in infos)
+            + "</table>"
+            + f"<p style='margin:0 0 4px;color:#5b6358'>Commentaire du cariste :</p><p style='margin:0 0 12px;padding:8px 12px;background:#f3f4f1;white-space:pre-wrap'>{escape(row['commentaire'] or '(aucun)')}</p>"
+            + (f"<p style='margin:0 0 12px'>{len(photos)} photo(s) en pièce jointe.</p>" if photos else "")
+            + (f"<p style='margin:0'><a href='{escape(lien)}' style='background:#171b16;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;display:inline-block'>Ouvrir le tableau de bord</a></p>" if lien else "")
+            + "</div><p style='font-size:12px;color:#8a9187'>Message automatique de la checklist de prise de poste caristes.</p></div>")
+    msg = EmailMessage()
+    msg["Subject"] = sujet
+    msg["From"] = formataddr(("Checklist caristes", SMTP["SMTP_FROM"] or SMTP["SMTP_USER"]))
+    msg["To"] = ", ".join(ALERTE_EMAILS)
+    msg["Message-ID"] = make_msgid(domain="checklist-caristes")
+    msg["X-Priority"] = "1"; msg["Importance"] = "high"
+    msg.set_content("\n".join(texte))
+    msg.add_alternative(html, subtype="html")
+    for i, data in enumerate(photos):
+        msg.add_attachment(data, maintype="image", subtype="jpeg", filename=f"chariot-{row['chariot']}-photo-{i + 1}.jpg")
+    return msg
+
+def envoyer(msg):
+    port = int(SMTP["SMTP_PORT"] or 587)
+    ctx = ssl.create_default_context()
+    if port == 465:
+        srv = smtplib.SMTP_SSL(SMTP["SMTP_HOST"], port, timeout=30, context=ctx)
+    else:
+        srv = smtplib.SMTP(SMTP["SMTP_HOST"], port, timeout=30)
+        srv.ehlo()
+        if srv.has_extn("starttls"): srv.starttls(context=ctx); srv.ehlo()
+    try:
+        if SMTP["SMTP_USER"]: srv.login(SMTP["SMTP_USER"], SMTP["SMTP_PASSWORD"])
+        srv.send_message(msg)
+    finally:
+        try: srv.quit()
+        except Exception: pass
+
+def noter_alerte(rid, etat):
+    with _lock, db() as c:
+        c.execute("UPDATE checklists SET alerte=?, maj=? WHERE id=?", (etat, now_iso(), rid))
+
+def alerte_en_fond(row, rid, photos, cfg):
+    def run():
+        for essai in range(3):
+            try:
+                envoyer(construire_alerte(row, rid, photos, cfg))
+                noter_alerte(rid, "envoyee " + now_iso()); return
+            except Exception as e:
+                err = f"{type(e).__name__}: {e}"[:200]
+                print(f"ALERTE e-mail échec (essai {essai + 1}) checklist {rid} : {err}")
+                time.sleep(10 * (essai + 1))
+        noter_alerte(rid, "echec " + err)
+    threading.Thread(target=run, daemon=True).start()
 
 def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
@@ -76,6 +183,8 @@ def init_db():
         cols = [r[1] for r in c.execute("PRAGMA table_info(checklists)")]
         if "photos" not in cols:
             c.execute("ALTER TABLE checklists ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'")
+        if "alerte" not in cols:
+            c.execute("ALTER TABLE checklists ADD COLUMN alerte TEXT")
     os.makedirs(PHOTOS_DIR, exist_ok=True)
 
 def clean(v, n):
@@ -175,10 +284,21 @@ class H(BaseHTTPRequestHandler):
         h = self.headers.get("Authorization", "")
         if h.startswith("Basic "):
             try:
-                _, _, pw = base64.b64decode(h[6:]).decode("utf-8").partition(":")
-                if hmac.compare_digest(pw.encode(), PASSWORD.encode()): return True
+                raw = base64.b64decode(h[6:])
+                for enc in ("utf-8", "latin-1"):          # certains navigateurs envoient les accents en latin-1
+                    try: _, _, pw = raw.decode(enc).partition(":")
+                    except UnicodeDecodeError: continue
+                    if hmac.compare_digest(pw.strip().encode(), PASSWORD.encode()): return True
             except Exception: pass
-        self._send(401, "Mot de passe requis", "text/plain; charset=utf-8",
+        page = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+                "<title>Connexion</title><body style='font:16px system-ui;margin:0;padding:32px 16px;background:#eef0ec;color:#171b16'>"
+                "<div style='max-width:460px;margin:auto;background:#fff;border-top:6px solid #f2bd1d;border-radius:10px;padding:24px'>"
+                "<h1 style='margin:0 0 8px;font-size:1.3rem'>Mot de passe requis</h1>"
+                "<p>Cette page est réservée aux responsables. Rechargez la page : une fenêtre de connexion s'ouvre.</p>"
+                "<p><b>Identifiant</b> : ce que vous voulez (ex. admin)<br><b>Mot de passe</b> : celui saisi dans Render (ADMIN_PASSWORD).</p>"
+                "<p style='color:#5b6358;font-size:.9rem'>Majuscules et minuscules comptent. Si la fenêtre ne s'ouvre pas, essayez dans Chrome ou Edge sur ordinateur.</p>"
+                "<p><a href='' style='display:inline-block;background:#171b16;color:#fff;padding:10px 16px;border-radius:7px;text-decoration:none'>Réessayer</a></p></div>")
+        self._send(401, page, "text/html; charset=utf-8",
                    {"WWW-Authenticate": 'Basic realm="Tableau de bord caristes", charset="UTF-8"'})
         return False
 
@@ -213,8 +333,18 @@ class H(BaseHTTPRequestHandler):
                     r = c.execute("SELECT date, horametre FROM checklists WHERE chariot=? AND horametre IS NOT NULL "
                                   "ORDER BY date DESC, horodateur DESC LIMIT 1", (ch,)).fetchone()
                 return self._send(200, {"date": r["date"], "horametre": r["horametre"]} if r else {})
-            if path in ("/tableau", "/qr", "/horametres", "/api/checklists", "/api/releves", "/export.csv") and not self._authed(): return
+            if path in ("/tableau", "/qr", "/horametres", "/api/checklists", "/api/releves", "/api/stockage", "/export.csv") and not self._authed(): return
             if path == "/horametres": return self._file("horametres.html")
+            if path == "/api/stockage":
+                du = shutil.disk_usage(DATA_DIR)
+                def size(p):
+                    try: return os.path.getsize(p)
+                    except OSError: return 0
+                base = sum(size(DB_PATH + x) for x in ("", "-wal", "-shm"))
+                photos = [f for f in os.listdir(PHOTOS_DIR)] if os.path.isdir(PHOTOS_DIR) else []
+                return self._send(200, {"total": du.total, "utilise": du.used, "libre": du.free,
+                                        "base": base, "photos": sum(size(os.path.join(PHOTOS_DIR, f)) for f in photos),
+                                        "nb_photos": len(photos)})
             if path == "/api/releves":
                 days = max(1, min(3660, int((q.get("jours") or ["90"])[0] or 90)))
                 cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -288,7 +418,32 @@ class H(BaseHTTPRequestHandler):
                     if names:
                         c.execute("UPDATE checklists SET photos=?, statut=CASE WHEN statut='resolu' THEN 'a_traiter' ELSE statut END WHERE id=?",
                                   (json.dumps(names), rid))
+                cfg = load_config()
+                regle = cfg.get("alertes") or {}
+                declenche = points_critiques_nok(json.loads(row["controles"]), cfg) or \
+                            (regle.get("si_chariot_non_roulant", True) and row["securite"] == "NON")
+                if declenche:
+                    if alertes_actives():
+                        noter_alerte(rid, "en_cours")
+                        alerte_en_fond(dict(row, horodateur=t), rid, photos, cfg)
+                    else:
+                        noter_alerte(rid, "non_configuree")
                 return self._send(201, {"ok": True, "id": rid})
+            if path == "/api/alerte-test":
+                if not self._authed(): return
+                if not alertes_actives():
+                    manque = [k for k in ("ALERTE_EMAILS", "SMTP_HOST", "SMTP_FROM") if not (ALERTE_EMAILS if k == "ALERTE_EMAILS" else SMTP[k] or (k == "SMTP_FROM" and SMTP["SMTP_USER"]))]
+                    return self._send(400, {"erreur": "Alertes non configurées dans Render. Manque : " + ", ".join(manque)})
+                cfg = load_config()
+                crit = (cfg.get("alertes") or {}).get("points_critiques") or []
+                row = {"chariot": "TEST", "site": "Test", "activite": "Test", "fournisseur": "Test", "cariste": "Message de test",
+                       "horodateur": now_iso(), "horametre": None, "securite": "NON", "commentaire": "Ceci est un e-mail de test : aucune action requise.",
+                       "controles": json.dumps({p: "NC" for p in crit[:1]})}
+                try:
+                    envoyer(construire_alerte(row, 0, [], cfg))
+                    return self._send(200, {"ok": True, "message": "E-mail de test envoyé à " + ", ".join(ALERTE_EMAILS)})
+                except Exception as e:
+                    return self._send(502, {"erreur": f"Échec de l'envoi : {type(e).__name__}: {e}"[:300]})
             if path.startswith("/api/checklists/") and path.endswith("/suivi"):
                 if not self._authed(): return
                 try: rid = int(path.split("/")[3])
@@ -312,6 +467,7 @@ if __name__ == "__main__":
     print(f"Checklist caristes démarrée sur le port {PORT}")
     print(f"  Formulaire caristes : http://localhost:{PORT}/")
     print(f"  Tableau de bord     : http://localhost:{PORT}/tableau")
+    print(f"  Alertes e-mail      : {'actives vers ' + ', '.join(ALERTE_EMAILS) if alertes_actives() else 'non configurées'}")
     if GENERATED_PASSWORD:
         print(f"  ATTENTION : aucun ADMIN_PASSWORD défini. Mot de passe temporaire : {PASSWORD}")
     try: srv.serve_forever()
