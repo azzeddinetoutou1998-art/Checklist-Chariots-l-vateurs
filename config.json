@@ -1,8 +1,32 @@
 {
   "nom_entreprise": "",
-  "sites": [],
-  "activites": [],
-  "fournisseurs": ["MANULOC : CHARIOT JAUNE", "MANUCHAR : CHARIOT ROUGE"],
+  "sites": [
+    "AYTRE",
+    "AIGREFEUILLE",
+    "ANDONS",
+    "GDS AIGREFEUILLE"
+  ],
+  "activites": [
+    "ZM 134",
+    "ZM 33",
+    "MANUTENTION",
+    "BAT 10",
+    "BAT 71",
+    "CAISSERIE",
+    "EXPEDITION",
+    "RECEPTION 99",
+    "PREPARATION 99",
+    "MANUTENTION (HORS STANDARD)",
+    "RECEPTION AIGREFEUILLE",
+    "PREPARATION AIGREFEUILLE",
+    "TRANSFERT AIGREFEUILLE",
+    "ANDONS",
+    "GDS AIGREFEUILLE"
+  ],
+  "fournisseurs": [
+    "MANULOC : CHARIOT JAUNE",
+    "MANUCHAR : CHARIOT ROUGE"
+  ],
   "points": [
     "Pas de fuites de liquide",
     "Niveau d'eau des batteries (si électrique)",
