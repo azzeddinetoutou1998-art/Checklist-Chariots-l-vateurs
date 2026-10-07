@@ -3,8 +3,7 @@
   "sites": [
     "AYTRE",
     "AIGREFEUILLE",
-    "ANDONS",
-    "GDS AIGREFEUILLE"
+    "ALLOINAY"
   ],
   "activites": [
     "ZM 134",
@@ -53,12 +52,13 @@
     "Bridage (chariots bridés) : 5 km/h intérieur, 10 km/h extérieur, test de vitesse"
   ],
   "alertes": {
-    "points_critiques": [
+    "points_critiques": [],
+    "si_chariot_non_roulant": false,
+    "a_remettre_pour_reactiver": [
       "Fonctionnement du gyrophare",
       "Essais de freinage",
       "Frein de parc",
       "Bridage (chariots bridés) : 5 km/h intérieur, 10 km/h extérieur, test de vitesse"
-    ],
-    "si_chariot_non_roulant": true
+    ]
   }
 }
