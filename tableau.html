@@ -122,6 +122,24 @@ td.wrap{white-space:normal;min-width:200px;max-width:380px;overflow-wrap:anywher
 .mail{font-size:.8rem;color:var(--muted)}
 .mail.ko{color:var(--crit);font-weight:700}
 .toast.info{background:var(--fg);color:var(--bg)}
+.btn.danger{color:var(--crit);border-color:var(--crit)}
+.del{font:inherit;font-size:.78rem;font-weight:600;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.del:hover{color:var(--crit);border-color:var(--crit)}
+.del.arm{background:var(--crit);border-color:var(--crit);color:#fff}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:8;display:flex;align-items:flex-start;justify-content:center;padding:calc(40px + env(safe-area-inset-top,0px)) 16px 16px;overflow:auto}
+.modal .box{background:var(--surface);color:var(--fg);border-radius:12px;max-width:540px;width:100%;padding:20px;display:flex;flex-direction:column;gap:14px;border-top:6px solid var(--crit)}
+.modal h2{margin:0;font:700 1.25rem var(--cond);text-transform:uppercase;letter-spacing:.04em}
+.modal p{margin:0}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.opt:has(input:checked){border-color:var(--fg);background:var(--grid)}
+.opt input{margin-top:3px}
+.opt b{display:block}
+.opt span{color:var(--muted);font-size:.85rem}
+.opt input[type=date]{margin-top:6px}
+.preview{padding:10px 12px;border-radius:8px;background:var(--crit-bg);font-weight:600}
+.row-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.btn.red{background:var(--crit);border-color:var(--crit);color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
 .toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--crit);color:#fff;font-weight:700;padding:12px 18px;border-radius:8px;z-index:5;max-width:calc(100% - 32px)}
 .demo{background:var(--accent-soft);color:var(--fg);padding:10px 14px;border-radius:8px;font-size:.88rem}
 </style>
@@ -154,7 +172,8 @@ td.wrap{white-space:normal;min-width:200px;max-width:380px;overflow-wrap:anywher
     <a class="btn" id="csv" href="/export.csv?jours=7">Exporter (Excel)</a>
     <a class="btn" href="/horametres">Horamètres</a>
     <a class="btn" href="/qr">QR-codes</a>
-    <button class="btn" id="testMail" type="button">Tester l'alerte e-mail</button>
+    <button class="btn" id="testMail" type="button" hidden>Tester l'alerte e-mail</button>
+    <button class="btn danger" id="cleanBtn" type="button">Nettoyer la base</button>
   </div>
 
   <section class="kpis" aria-label="Indicateurs">
@@ -191,12 +210,24 @@ td.wrap{white-space:normal;min-width:200px;max-width:380px;overflow-wrap:anywher
   <section class="panel">
     <h2>Dernières checklists</h2>
     <div class="tbl"><table>
-      <thead><tr><th>Heure</th><th>Chariot</th><th>Cariste</th><th>Site</th><th>Fournisseur</th><th>Activité</th><th style="text-align:right">Horamètre</th><th>Non conf.</th><th>Sécurité</th><th>Commentaire</th></tr></thead>
+      <thead><tr><th>Heure</th><th>Chariot</th><th>Cariste</th><th>Site</th><th>Fournisseur</th><th>Activité</th><th style="text-align:right">Horamètre</th><th>Non conf.</th><th>Sécurité</th><th>Commentaire</th><th></th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
   </section>
 </div>
 <div class="toast" id="toast" hidden></div>
+<div class="modal" id="cleanModal" hidden role="dialog" aria-modal="true" aria-labelledby="cleanTitle">
+  <div class="box">
+    <h2 id="cleanTitle">Nettoyer la base</h2>
+    <p>Pensez à <a href="/export.csv?jours=3660" id="cleanExport">exporter l'historique (Excel)</a> avant de supprimer.</p>
+    <label class="opt"><input type="radio" name="cmode" value="photos_avant" checked><div><b>Supprimer les photos anciennes</b><span>Libère de la place. Les checklists sont gardées, seules leurs photos sont supprimées.</span><br><input type="date" id="cDate1" aria-label="Photos antérieures au"></div></label>
+    <label class="opt"><input type="radio" name="cmode" value="avant"><div><b>Supprimer les checklists anciennes</b><span>Checklists (et leurs photos) enregistrées avant la date choisie.</span><br><input type="date" id="cDate2" aria-label="Checklists antérieures au"></div></label>
+    <label class="opt"><input type="radio" name="cmode" value="tout"><div><b>Tout effacer</b><span>Remet la base à zéro, par exemple après la période de test. Toutes les checklists et photos sont supprimées.</span></div></label>
+    <div class="preview" id="cPreview">Calcul…</div>
+    <label>Pour confirmer, tapez <b>SUPPRIMER</b> :<br><input type="text" id="cConfirm" autocomplete="off" style="width:100%;margin-top:6px"></label>
+    <div class="row-btns"><button class="btn" type="button" id="cCancel">Annuler</button><button class="btn red" type="button" id="cGo" disabled>Supprimer définitivement</button></div>
+  </div>
+</div>
 <div class="lb" id="lb" hidden role="dialog" aria-label="Photo"><img id="lbImg" alt=""><span>Fermer ✕</span></div>
 
 <script>
@@ -376,7 +407,7 @@ function renderTop(rows){
 
 function renderTable(rows){
   const tb = $("rows"); tb.replaceChildren();
-  if (!rows.length){ const tr = el("tr"); const td = el("td", "empty", "Aucune checklist sur la période."); td.colSpan = 10; tr.append(td); tb.append(tr); return; }
+  if (!rows.length){ const tr = el("tr"); const td = el("td", "empty", "Aucune checklist sur la période."); td.colSpan = 11; tr.append(td); tb.append(tr); return; }
   rows.slice(0, 200).forEach(r => {
     const tr = el("tr");
     const sec = el("td"); sec.append(el("span", "pill " + (r.securite === "NON" ? "crit" : "good"), r.securite));
@@ -384,6 +415,8 @@ function renderTable(rows){
     const com = el("td", "wrap", (r.commentaire || "") + (r.photos && r.photos.length ? `  [${r.photos.length} photo${r.photos.length>1?"s":""}]` : ""));
     tr.append(el("td", null, fmtH(r.horodateur)), el("td", null, r.chariot), el("td", null, r.cariste), el("td", null, r.site),
       el("td", null, r.fournisseur.split(" ")[0]), el("td", null, r.activite), h, el("td", "num", r.nb_non_conformes || ""), sec, com);
+    const dc = el("td"), db = el("button", "del", "Supprimer"); db.type = "button"; db.title = "Supprimer cette checklist (ex. saisie de test)";
+    db.onclick = () => supprimerUne(r, db); dc.append(db); tr.append(dc);
     tb.append(tr);
   });
 }
@@ -419,6 +452,60 @@ $("testMail").addEventListener("click", async () => {
   catch(e){ toast("Serveur injoignable, réessayez."); }
   b.disabled = false; b.textContent = "Tester l'alerte e-mail";
 });
+
+// ------------------------------------------------------------------ nettoyage
+async function supprimerUne(r, b){
+  if (!b.classList.contains("arm")){ b.classList.add("arm"); b.textContent = "Confirmer ?"; setTimeout(() => { b.classList.remove("arm"); b.textContent = "Supprimer"; }, 4000); return; }
+  if (DEMO){ S.rows.delete(r.id); render(); return toast("Checklist supprimée.", true); }
+  b.disabled = true;
+  try { const res = await fetch(`/api/checklists/${r.id}/supprimer`, {method:"POST"});
+    if (res.ok){ S.rows.delete(r.id); render(); toast(`Checklist du chariot ${r.chariot} supprimée.`, true); }
+    else toast((await res.json()).erreur || "Suppression impossible."); }
+  catch(e){ toast("Serveur injoignable, réessayez."); }
+  b.disabled = false;
+}
+const cMode = () => document.querySelector('input[name=cmode]:checked').value;
+const cDate = () => cMode() === "photos_avant" ? $("cDate1").value : cMode() === "avant" ? $("cDate2").value : "";
+let cTimer;
+async function cPreview(){
+  const box = $("cPreview"), mode = cMode(), date = cDate();
+  if (mode !== "tout" && !date){ box.textContent = "Choisissez une date."; majGo(); return; }
+  box.textContent = "Calcul…";
+  let d;
+  if (DEMO){ const all = [...S.rows.values()].filter(r => mode === "tout" || r.horodateur.slice(0,10) < date);
+    d = {checklists: mode === "photos_avant" ? 0 : all.length, photos: all.reduce((n, r) => n + (r.photos || []).length, 0), octets_photos: 0}; }
+  else { try { const r = await fetch(`/api/nettoyage/apercu?mode=${mode}&date=${date}`); d = await r.json(); if (!r.ok){ box.textContent = d.erreur; return; } } catch(e){ box.textContent = "Serveur injoignable."; return; } }
+  const ph = `${d.photos} photo${d.photos > 1 ? "s" : ""}` + (d.octets_photos ? ` (${mo(d.octets_photos)})` : "");
+  box.textContent = mode === "photos_avant" ? `${ph} seront supprimées. Les checklists sont conservées.`
+    : `${d.checklists} checklist${d.checklists > 1 ? "s" : ""} et ${ph} seront supprimées définitivement.`;
+  box.dataset.vide = (mode === "photos_avant" ? d.photos : d.checklists) ? "" : "1"; majGo();
+}
+function majGo(){ $("cGo").disabled = $("cConfirm").value.trim() !== "SUPPRIMER" || !!$("cPreview").dataset.vide || (cMode() !== "tout" && !cDate()); }
+function openClean(){
+  const d = new Date(); d.setMonth(d.getMonth() - 6); const iso = d.toISOString().slice(0,10);
+  $("cDate1").value = $("cDate2").value = iso; $("cConfirm").value = ""; $("cleanModal").hidden = false; cPreview();
+}
+$("cleanBtn").addEventListener("click", openClean);
+$("cCancel").addEventListener("click", () => $("cleanModal").hidden = true);
+$("cleanModal").addEventListener("click", e => { if (e.target.id === "cleanModal") $("cleanModal").hidden = true; });
+$("cleanModal").addEventListener("change", () => { clearTimeout(cTimer); cTimer = setTimeout(cPreview, 200); });
+$("cConfirm").addEventListener("input", majGo);
+$("cGo").addEventListener("click", async () => {
+  const mode = cMode(), date = cDate(), b = $("cGo"); b.disabled = true; b.textContent = "Suppression…";
+  if (DEMO){ [...S.rows.values()].forEach(r => { if (mode === "tout" || r.horodateur.slice(0,10) < date){ if (mode === "photos_avant") r.photos = []; else S.rows.delete(r.id); } });
+    $("cleanModal").hidden = true; b.textContent = "Supprimer définitivement"; render(); return toast("Nettoyage effectué (démonstration).", true); }
+  try { const r = await fetch("/api/nettoyage", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({mode, date, confirmation:"SUPPRIMER"})});
+    const j = await r.json();
+    if (!r.ok){ toast(j.erreur || "Nettoyage impossible."); }
+    else { $("cleanModal").hidden = true; toast(`Nettoyage effectué : ${mode === "photos_avant" ? "" : j.checklists + " checklist(s), "}${j.photos} photo(s) supprimées.`, true);
+      S.rows.clear(); S.depuis = ""; S.first = true; tick(); stockage(); }
+  } catch(e){ toast("Serveur injoignable, réessayez."); }
+  b.textContent = "Supprimer définitivement"; majGo();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("cleanModal").hidden = true; });
+// Rechargement complet toutes les 5 min : fait disparaître les suppressions faites sur un autre poste
+setInterval(() => { if (document.hidden || !$("cleanModal").hidden) return; S.rows.clear(); S.depuis = ""; S.first = true; tick(); }, 300000);
+if (!DEMO) fetch("/config").then(r => r.json()).then(c => { $("testMail").hidden = !c.alertes_actives; }).catch(() => {});
 
 // ------------------------------------------------------------------ stockage
 const mo = b => b >= 1e9 ? (b / 1e9).toLocaleString("fr-FR", {maximumFractionDigits:1}) + " Go" : Math.round(b / 1e6).toLocaleString("fr-FR") + " Mo";

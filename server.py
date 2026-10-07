@@ -264,6 +264,56 @@ def row_out(r):
 
 # --------------------------------------------------------------------------- anti-abus
 _hits = {}
+# --------------------------------------------------------------------------- nettoyage
+def _where_nettoyage(mode, date):
+    if mode == "tout": return "1=1", ()
+    if mode in ("avant", "photos_avant"):
+        datetime.strptime(date, "%Y-%m-%d")   # lève ValueError si la date est invalide
+        return "date < ?", (date,)
+    raise ValueError("mode inconnu")
+
+def apercu_nettoyage(mode, date):
+    where, args = _where_nettoyage(mode, date)
+    with db() as c:
+        rows = c.execute(f"SELECT photos FROM checklists WHERE {where}", args).fetchall()
+    noms = [n for r in rows for n in json.loads(r["photos"] or "[]")]
+    poids = sum(os.path.getsize(os.path.join(PHOTOS_DIR, n)) for n in noms if os.path.isfile(os.path.join(PHOTOS_DIR, n)))
+    return {"checklists": 0 if mode == "photos_avant" else len(rows), "photos": len(noms), "octets_photos": poids}
+
+def sauvegarder_base():
+    """Copie de sécurité de la base avant un nettoyage (écrase la précédente)."""
+    dest = os.path.join(DATA_DIR, "sauvegarde-avant-nettoyage.db")
+    src, dst = sqlite3.connect(DB_PATH), sqlite3.connect(dest)
+    try: src.backup(dst)
+    finally: src.close(); dst.close()
+    return dest
+
+def supprimer_photos(noms):
+    for n in noms:
+        if re.fullmatch(r"\d+_\d\.jpg", n):
+            try: os.remove(os.path.join(PHOTOS_DIR, n))
+            except OSError: pass
+
+def nettoyer(mode, date):
+    where, args = _where_nettoyage(mode, date)
+    avant = apercu_nettoyage(mode, date)
+    sauvegarder_base()
+    with _lock:
+        c = db()
+        try:
+            rows = c.execute(f"SELECT id, photos FROM checklists WHERE {where}", args).fetchall()
+            noms = [n for r in rows for n in json.loads(r["photos"] or "[]")]
+            if mode == "photos_avant":
+                c.execute(f"UPDATE checklists SET photos='[]', maj=? WHERE {where} AND photos != '[]'", (now_iso(),) + args)
+            else:
+                c.execute(f"DELETE FROM checklists WHERE {where}", args)
+            c.commit()
+            c.execute("VACUUM")
+        finally:
+            c.close()
+    supprimer_photos(noms)
+    return avant
+
 def rate_ok(ip, limit=15, window=60):
     t = time.time()
     with _lock:
@@ -335,7 +385,10 @@ class H(BaseHTTPRequestHandler):
             if path == "/": return self._file("formulaire.html")
             if path == "/config":
                 cfg = load_config()
-                return self._send(200, {k: cfg.get(k) for k in ("nom_entreprise", "sites", "activites", "fournisseurs", "points")})
+                out = {k: cfg.get(k) for k in ("nom_entreprise", "sites", "activites", "fournisseurs", "points")}
+                regle = cfg.get("alertes") or {}
+                out["alertes_actives"] = bool(regle.get("points_critiques") or regle.get("si_chariot_non_roulant"))
+                return self._send(200, out)
             if path == "/sante": return self._send(200, {"ok": True})
             if path.startswith("/photos/"):
                 if not self._authed(): return
@@ -353,7 +406,10 @@ class H(BaseHTTPRequestHandler):
                     r = c.execute("SELECT date, horametre FROM checklists WHERE chariot=? AND horametre IS NOT NULL "
                                   "ORDER BY date DESC, horodateur DESC LIMIT 1", (ch,)).fetchone()
                 return self._send(200, {"date": r["date"], "horametre": r["horametre"]} if r else {})
-            if path in ("/tableau", "/qr", "/horametres", "/api/checklists", "/api/releves", "/api/stockage", "/export.csv") and not self._authed(): return
+            if path in ("/tableau", "/qr", "/horametres", "/api/checklists", "/api/releves", "/api/stockage", "/api/nettoyage/apercu", "/export.csv") and not self._authed(): return
+            if path == "/api/nettoyage/apercu":
+                try: return self._send(200, apercu_nettoyage((q.get("mode") or [""])[0], (q.get("date") or [""])[0]))
+                except ValueError: return self._send(400, {"erreur": "Choisissez une date valide."})
             if path == "/horametres": return self._file("horametres.html")
             if path == "/api/stockage":
                 du = shutil.disk_usage(DATA_DIR)
@@ -449,6 +505,26 @@ class H(BaseHTTPRequestHandler):
                     else:
                         noter_alerte(rid, "non_configuree")
                 return self._send(201, {"ok": True, "id": rid})
+            if path == "/api/nettoyage":
+                if not self._authed(): return
+                p = self._json_body() or {}
+                if p.get("confirmation") != "SUPPRIMER":
+                    return self._send(400, {"erreur": "Tapez SUPPRIMER en majuscules pour confirmer."})
+                try: res = nettoyer(p.get("mode"), p.get("date") or "")
+                except ValueError: return self._send(400, {"erreur": "Choisissez une date valide."})
+                print(f"NETTOYAGE {p.get('mode')} {p.get('date') or ''} par {self._ip()} : {res}")
+                return self._send(200, dict(res, ok=True))
+            if path.startswith("/api/checklists/") and path.endswith("/supprimer"):
+                if not self._authed(): return
+                try: rid = int(path.split("/")[3])
+                except ValueError: return self._send(404, {"erreur": "Introuvable"})
+                with _lock, db() as c:
+                    r = c.execute("SELECT photos FROM checklists WHERE id=?", (rid,)).fetchone()
+                    if not r: return self._send(404, {"erreur": "Checklist introuvable."})
+                    c.execute("DELETE FROM checklists WHERE id=?", (rid,))
+                supprimer_photos(json.loads(r["photos"] or "[]"))
+                print(f"SUPPRESSION checklist {rid} par {self._ip()}")
+                return self._send(200, {"ok": True})
             if path == "/api/alerte-test":
                 if not self._authed(): return
                 if not alertes_actives():
