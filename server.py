@@ -26,6 +26,7 @@ STATIC = os.path.join(ROOT, "static") if os.path.isdir(os.path.join(ROOT, "stati
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(ROOT, "data"))
 DB_PATH = os.path.join(DATA_DIR, "checklists.db")
 PHOTOS_DIR = os.path.join(DATA_DIR, "photos")
+DOCS_DIR = os.path.join(DATA_DIR, "documents")      # pièces jointes des interventions (rapports VGP, bons…)
 PORT = int(os.environ.get("PORT", "8080"))
 PASSWORD = (os.environ.get("ADMIN_PASSWORD") or "").strip()   # espaces ou retour à la ligne collés par erreur
 GENERATED_PASSWORD = False
@@ -205,7 +206,20 @@ def init_db():
             c.execute("ALTER TABLE checklists ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'")
         if "alerte" not in cols:
             c.execute("ALTER TABLE checklists ADD COLUMN alerte TEXT")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_ch ON checklists(chariot)")
+        c.execute("""CREATE TABLE IF NOT EXISTS chariots(
+            numero TEXT PRIMARY KEY,
+            fournisseur TEXT, marque TEXT, modele TEXT, energie TEXT, numero_serie TEXT, annee TEXT,
+            mise_en_service TEXT, site TEXT, bride TEXT, derniere_vgp TEXT,
+            statut TEXT NOT NULL DEFAULT 'en_service', notes TEXT, maj TEXT)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS interventions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chariot TEXT NOT NULL, date TEXT NOT NULL, type TEXT NOT NULL, description TEXT NOT NULL,
+            intervenant TEXT, horametre REAL, cout REAL, checklist_id INTEGER,
+            documents TEXT NOT NULL DEFAULT '[]', cree TEXT NOT NULL)""")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_int_ch ON interventions(chariot)")
     os.makedirs(PHOTOS_DIR, exist_ok=True)
+    os.makedirs(DOCS_DIR, exist_ok=True)
 
 def clean(v, n):
     return (str(v).strip()[:n]) if v is not None else ""
@@ -264,6 +278,193 @@ def row_out(r):
 
 # --------------------------------------------------------------------------- anti-abus
 _hits = {}
+# --------------------------------------------------------------------------- fiches chariots
+TYPES_INTERVENTION = ["Réparation", "Entretien préventif", "VGP (vérification périodique)", "Pneumatiques",
+                      "Batterie / chargeur", "Contrôle du bridage", "Autre"]
+CHAMPS_CHARIOT = {"fournisseur": 80, "marque": 60, "modele": 60, "energie": 20, "numero_serie": 60, "annee": 4,
+                  "mise_en_service": 10, "site": 80, "bride": 3, "derniere_vgp": 10, "statut": 20, "notes": 2000}
+STATUTS_CHARIOT = ("en_service", "hors_service", "restitue")
+VGP_MOIS = 6           # VGP des chariots automoteurs : tous les 6 mois
+MAX_DOC_BYTES = 6 * 1024 * 1024
+MAX_BODY_DOCS = 3 * 9 * 1024 * 1024
+
+def ajouter_mois(d, n):
+    a, m = d.year + (d.month - 1 + n) // 12, (d.month - 1 + n) % 12 + 1
+    jours = [31, 29 if a % 4 == 0 and (a % 100 or a % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
+    return d.replace(year=a, month=m, day=min(d.day, jours))
+
+def date_ok(v):
+    if not v: return ""
+    try: datetime.strptime(v, "%Y-%m-%d")
+    except ValueError: raise ValueError("Date invalide.")
+    return v
+
+def vgp_info(derniere):
+    if not derniere: return {"derniere": None, "prochaine": None, "etat": "inconnue", "jours": None}
+    d = datetime.strptime(derniere, "%Y-%m-%d").date()
+    proch = ajouter_mois(d, VGP_MOIS)
+    jours = (proch - datetime.now(timezone.utc).date()).days
+    return {"derniere": derniere, "prochaine": proch.isoformat(), "jours": jours,
+            "etat": "depassee" if jours < 0 else "bientot" if jours <= 30 else "a_jour"}
+
+def nc_liste(controles_json):
+    try: return [p for p, v in json.loads(controles_json).items() if v == "NC"]
+    except Exception: return []
+
+def est_anomalie(r):
+    return bool(r["nb_non_conformes"] or r["securite"] == "NON" or (r["commentaire"] or "").strip() or r["photos"] not in (None, "", "[]"))
+
+def liste_chariots():
+    with db() as c:
+        cks = c.execute("SELECT chariot, horodateur, date, horametre, site, fournisseur, securite, statut, nb_non_conformes, "
+                        "commentaire, photos FROM checklists ORDER BY date, horodateur").fetchall()
+        fiches = {r["numero"]: dict(r) for r in c.execute("SELECT * FROM chariots")}
+        ints = c.execute("SELECT chariot, COUNT(*) n, COALESCE(SUM(cout),0) cout, MAX(date) derniere FROM interventions GROUP BY chariot").fetchall()
+    out = {}
+    def base(n):
+        return out.setdefault(n, {"numero": n, "checklists": 0, "derniere_checklist": None, "horametre": None, "site": "",
+                                  "fournisseur": "", "anomalies_ouvertes": 0, "a_l_arret": False, "interventions": 0,
+                                  "cout_total": 0, "derniere_intervention": None})
+    for r in cks:
+        b = base(r["chariot"]); b["checklists"] += 1; b["derniere_checklist"] = r["horodateur"]
+        if r["horametre"] is not None: b["horametre"] = r["horametre"]
+        b["site"] = r["site"] or b["site"]; b["fournisseur"] = r["fournisseur"] or b["fournisseur"]
+        if r["statut"] != "resolu" and est_anomalie(r): b["anomalies_ouvertes"] += 1
+        b["a_l_arret"] = r["securite"] == "NON" and r["statut"] != "resolu"
+    for r in ints:
+        b = base(r["chariot"]); b.update(interventions=r["n"], cout_total=r["cout"], derniere_intervention=r["derniere"])
+    for n, f in fiches.items():
+        b = base(n)
+        for k in ("marque", "modele", "energie", "statut", "bride"): b[k] = f.get(k) or ""
+        if f.get("site"): b["site"] = f["site"]
+        if f.get("fournisseur"): b["fournisseur"] = f["fournisseur"]
+        b["vgp"] = vgp_info(f.get("derniere_vgp"))
+    for b in out.values():
+        b.setdefault("vgp", vgp_info(None)); b.setdefault("statut", "en_service")
+    return sorted(out.values(), key=lambda b: (len(b["numero"]), b["numero"]))
+
+def detail_chariot(n):
+    with db() as c:
+        fiche = c.execute("SELECT * FROM chariots WHERE numero=?", (n,)).fetchone()
+        cks = c.execute("SELECT * FROM checklists WHERE chariot=? ORDER BY date DESC, horodateur DESC", (n,)).fetchall()
+        ints = c.execute("SELECT * FROM interventions WHERE chariot=? ORDER BY date DESC, id DESC", (n,)).fetchall()
+    fiche = dict(fiche) if fiche else {"numero": n, "statut": "en_service"}
+    if cks:   # valeurs par défaut tirées des checklists si la fiche n'est pas renseignée
+        fiche.setdefault("fournisseur", None); fiche.setdefault("site", None)
+        fiche["fournisseur"] = fiche.get("fournisseur") or cks[0]["fournisseur"]
+        fiche["site"] = fiche.get("site") or cks[0]["site"]
+    checklists = [{"id": r["id"], "horodateur": r["horodateur"], "date": r["date"], "cariste": r["cariste"],
+                   "horametre": r["horametre"], "site": r["site"], "activite": r["activite"], "fournisseur": r["fournisseur"],
+                   "nc": nc_liste(r["controles"]), "commentaire": r["commentaire"], "securite": r["securite"],
+                   "statut": r["statut"], "note_responsable": r["note_responsable"], "anomalie": est_anomalie(r),
+                   "photos": ["/photos/" + f for f in json.loads(r["photos"] or "[]")]} for r in cks]
+    interventions = []
+    for r in ints:
+        d = dict(r); d["documents"] = [{"url": "/documents/" + x["fichier"], "nom": x["nom"]} for x in json.loads(r["documents"] or "[]")]
+        interventions.append(d)
+    return {"fiche": fiche, "vgp": vgp_info(fiche.get("derniere_vgp")), "checklists": checklists,
+            "interventions": interventions, "types_intervention": TYPES_INTERVENTION,
+            "existe": bool(cks or ints or fiche.get("maj"))}
+
+def enregistrer_fiche(n, p):
+    vals = {k: clean(p.get(k), lim) for k, lim in CHAMPS_CHARIOT.items()}
+    for k in ("mise_en_service", "derniere_vgp"): vals[k] = date_ok(vals[k])
+    if vals["statut"] not in STATUTS_CHARIOT: vals["statut"] = "en_service"
+    if vals["annee"] and not vals["annee"].isdigit(): raise ValueError("Année : 4 chiffres.")
+    vals["maj"] = now_iso()
+    cols = ["numero"] + list(vals)
+    with _lock, db() as c:
+        c.execute(f"INSERT INTO chariots({','.join(cols)}) VALUES({','.join('?' * len(cols))}) "
+                  f"ON CONFLICT(numero) DO UPDATE SET " + ",".join(f"{k}=excluded.{k}" for k in vals), [n] + list(vals.values()))
+
+def decoder_document(item):
+    nom = clean(item.get("nom"), 120) or "document"
+    try: data = base64.b64decode(str(item.get("data") or "").split(",", 1)[-1], validate=True)
+    except ValueError: raise ValueError(f"« {nom} » est illisible, joignez-le à nouveau.")
+    if len(data) > MAX_DOC_BYTES: raise ValueError(f"« {nom} » dépasse 6 Mo.")
+    if data.startswith(b"%PDF"): ext = "pdf"
+    elif data.startswith(b"\xff\xd8\xff"): ext = "jpg"
+    elif data.startswith(b"\x89PNG"): ext = "png"
+    else: raise ValueError(f"« {nom} » : seuls les PDF, JPEG et PNG sont acceptés.")
+    return nom, ext, data
+
+def ajouter_intervention(n, p):
+    date = date_ok(clean(p.get("date"), 10))
+    if not date: raise ValueError("Indiquez la date de l'intervention.")
+    typ = clean(p.get("type"), 60)
+    if typ not in TYPES_INTERVENTION: raise ValueError("Choisissez le type d'intervention.")
+    desc = clean(p.get("description"), 3000)
+    if len(desc) < 3: raise ValueError("Décrivez l'intervention.")
+    def nombre(v, nom):
+        v = str(v or "").replace(",", ".").replace(" ", "").replace("€", "")
+        if not v: return None
+        try: x = float(v)
+        except ValueError: raise ValueError(f"{nom} : nombre attendu.")
+        if x < 0: raise ValueError(f"{nom} : nombre positif attendu.")
+        return x
+    horametre, cout = nombre(p.get("horametre"), "Horamètre"), nombre(p.get("cout"), "Coût")
+    ck = p.get("checklist_id")
+    ck = int(ck) if str(ck or "").isdigit() else None
+    docs = [decoder_document(d) for d in (p.get("documents") or [])[:3]]
+    with _lock, db() as c:
+        cur = c.execute("INSERT INTO interventions(chariot,date,type,description,intervenant,horametre,cout,checklist_id,cree) "
+                        "VALUES(?,?,?,?,?,?,?,?,?)", (n, date, typ, desc, clean(p.get("intervenant"), 120), horametre, cout, ck, now_iso()))
+        iid = cur.lastrowid
+        stock = []
+        for i, (nom, ext, data) in enumerate(docs):
+            fichier = f"i{iid}_{i}.{ext}"
+            with open(os.path.join(DOCS_DIR, fichier), "wb") as f: f.write(data)
+            stock.append({"fichier": fichier, "nom": nom})
+        if stock: c.execute("UPDATE interventions SET documents=? WHERE id=?", (json.dumps(stock, ensure_ascii=False), iid))
+        if typ.startswith("VGP"):
+            c.execute("INSERT INTO chariots(numero, derniere_vgp, statut, maj) VALUES(?,?,'en_service',?) ON CONFLICT(numero) DO UPDATE SET "
+                      "derniere_vgp=CASE WHEN derniere_vgp IS NULL OR derniere_vgp='' OR derniere_vgp<excluded.derniere_vgp "
+                      "THEN excluded.derniere_vgp ELSE derniere_vgp END", (n, date, now_iso()))
+        if ck and p.get("resoudre"):
+            c.execute("UPDATE checklists SET statut='resolu', note_responsable=COALESCE(NULLIF(note_responsable,''), ?), maj=? "
+                      "WHERE id=? AND chariot=?", (f"{typ} le {date[8:]}/{date[5:7]} : {desc}"[:500], now_iso(), ck, n))
+    return iid
+
+def supprimer_intervention(iid):
+    with _lock, db() as c:
+        r = c.execute("SELECT * FROM interventions WHERE id=?", (iid,)).fetchone()
+        if not r: return False
+        c.execute("DELETE FROM interventions WHERE id=?", (iid,))
+        if r["type"].startswith("VGP"):
+            f = c.execute("SELECT derniere_vgp FROM chariots WHERE numero=?", (r["chariot"],)).fetchone()
+            if f and f["derniere_vgp"] == r["date"]:
+                m = c.execute("SELECT MAX(date) d FROM interventions WHERE chariot=? AND type LIKE 'VGP%'", (r["chariot"],)).fetchone()
+                c.execute("UPDATE chariots SET derniere_vgp=? WHERE numero=?", (m["d"], r["chariot"]))
+    for d in json.loads(r["documents"] or "[]"):
+        try: os.remove(os.path.join(DOCS_DIR, d["fichier"]))
+        except OSError: pass
+    return True
+
+def historique_csv(n):
+    d = detail_chariot(n); f = d["fiche"]
+    num = lambda v: "" if v is None else (f"{v:g}".replace(".", ","))
+    lignes = [["Fiche de vie chariot", n], ["Fournisseur", f.get("fournisseur") or ""], ["Marque / modèle", f"{f.get('marque') or ''} {f.get('modele') or ''}".strip()],
+              ["N° de série", f.get("numero_serie") or ""], ["Énergie", f.get("energie") or ""], ["Site", f.get("site") or ""],
+              ["Dernière VGP", d["vgp"]["derniere"] or ""], ["Prochaine VGP", d["vgp"]["prochaine"] or ""], [],
+              ["Date", "Heure", "Événement", "Détail", "Horamètre", "Cariste / intervenant", "Coût (€)", "Suivi"]]
+    ev = []
+    for r in d["checklists"]:
+        detail = ("Non conforme : " + ", ".join(r["nc"])) if r["nc"] else "Tous points conformes ou non applicables"
+        if r["commentaire"]: detail += " | Commentaire : " + r["commentaire"]
+        if r["securite"] == "NON": detail = "CHARIOT NON ROULANT | " + detail
+        suivi = {"a_traiter": "À traiter", "pris_en_charge": "Pris en charge", "resolu": "Résolu"}.get(r["statut"], "") if r["anomalie"] else ""
+        if r["note_responsable"]: suivi += " – " + r["note_responsable"]
+        ev.append((r["date"], heure_paris(r["horodateur"])[-5:], "Checklist", detail, num(r["horametre"]), r["cariste"], "", suivi))
+    for r in d["interventions"]:
+        docs = " | Pièces jointes : " + ", ".join(x["nom"] for x in r["documents"]) if r["documents"] else ""
+        ev.append((r["date"], "", r["type"], r["description"] + docs, num(r["horametre"]), r["intervenant"] or "", num(r["cout"]), ""))
+    ev.sort(key=lambda e: (e[0], e[1]))
+    fr = lambda iso: f"{iso[8:10]}/{iso[5:7]}/{iso[:4]}" if iso and len(iso) == 10 else (iso or "")
+    for i in (6, 7): lignes[i][1] = fr(lignes[i][1])
+    lignes += [[fr(e[0])] + list(e[1:]) for e in ev]
+    out = io.StringIO(); csv.writer(out, delimiter=";").writerows(lignes)
+    return "\ufeff" + out.getvalue()
+
 # --------------------------------------------------------------------------- nettoyage
 def _where_nettoyage(mode, date):
     if mode == "tout": return "1=1", ()
@@ -307,11 +508,19 @@ def nettoyer(mode, date):
                 c.execute(f"UPDATE checklists SET photos='[]', maj=? WHERE {where} AND photos != '[]'", (now_iso(),) + args)
             else:
                 c.execute(f"DELETE FROM checklists WHERE {where}", args)
+            docs = []
+            if mode == "tout":
+                docs = [x["fichier"] for r in c.execute("SELECT documents FROM interventions") for x in json.loads(r["documents"] or "[]")]
+                c.execute("DELETE FROM interventions")
+                c.execute("UPDATE chariots SET derniere_vgp=NULL")
             c.commit()
             c.execute("VACUUM")
         finally:
             c.close()
     supprimer_photos(noms)
+    for f in docs:
+        try: os.remove(os.path.join(DOCS_DIR, f))
+        except OSError: pass
     return avant
 
 def rate_ok(ip, limit=15, window=60):
@@ -406,6 +615,9 @@ class H(BaseHTTPRequestHandler):
                     r = c.execute("SELECT date, horametre FROM checklists WHERE chariot=? AND horametre IS NOT NULL "
                                   "ORDER BY date DESC, horodateur DESC LIMIT 1", (ch,)).fetchone()
                 return self._send(200, {"date": r["date"], "horametre": r["horametre"]} if r else {})
+            if path == "/chariots" or path.startswith(("/chariots/", "/api/chariots", "/documents/")):
+                if not self._authed(): return
+                return self._chariots_get(path)
             if path in ("/tableau", "/qr", "/horametres", "/api/checklists", "/api/releves", "/api/stockage", "/api/nettoyage/apercu", "/export.csv") and not self._authed(): return
             if path == "/api/nettoyage/apercu":
                 try: return self._send(200, apercu_nettoyage((q.get("mode") or [""])[0], (q.get("date") or [""])[0]))
@@ -436,6 +648,27 @@ class H(BaseHTTPRequestHandler):
             self._send(404, "Page introuvable", "text/plain; charset=utf-8")
         except Exception as e:
             self._send(500, {"erreur": "Erreur serveur"}); print("ERREUR", e)
+
+    def _chariots_get(self, path):
+        if path == "/chariots": return self._file("chariots.html")
+        if path == "/api/chariots": return self._send(200, {"chariots": liste_chariots()})
+        if path.startswith("/documents/"):
+            name = path[len("/documents/"):]
+            m = re.fullmatch(r"i(\d+)_\d\.(pdf|jpg|png)", name)
+            fp = os.path.join(DOCS_DIR, name)
+            if not m or not os.path.isfile(fp): return self._send(404, "Introuvable", "text/plain")
+            ctype = {"pdf": "application/pdf", "jpg": "image/jpeg", "png": "image/png"}[m.group(2)]
+            with open(fp, "rb") as f:
+                return self._send(200, f.read(), ctype, {"Cache-Control": "private, max-age=86400"})
+        parts = path.strip("/").split("/")
+        if parts[0] == "chariots" and len(parts) == 2 and parts[1].isdigit(): return self._file("chariot.html")
+        if parts[:2] == ["api", "chariots"] and len(parts) >= 3 and parts[2].isdigit():
+            n = parts[2]
+            if len(parts) == 3: return self._send(200, detail_chariot(n))
+            if parts[3:] == ["historique.csv"]:
+                return self._send(200, historique_csv(n), "text/csv; charset=utf-8",
+                                  {"Content-Disposition": f'attachment; filename="fiche-de-vie-chariot-{n}.csv"'})
+        return self._send(404, "Page introuvable", "text/plain; charset=utf-8")
 
     def _list(self, q):
         days = max(1, min(366, int((q.get("jours") or ["7"])[0] or 7)))
@@ -505,6 +738,25 @@ class H(BaseHTTPRequestHandler):
                     else:
                         noter_alerte(rid, "non_configuree")
                 return self._send(201, {"ok": True, "id": rid})
+            if path.startswith(("/api/chariots/", "/api/interventions/")):
+                if not self._authed(): return
+                parts = path.strip("/").split("/")
+                try:
+                    if parts[1] == "interventions" and len(parts) == 4 and parts[3] == "supprimer" and parts[2].isdigit():
+                        ok = supprimer_intervention(int(parts[2]))
+                        return self._send(200 if ok else 404, {"ok": ok})
+                    if parts[1] == "chariots" and len(parts) >= 3 and parts[2].isdigit():
+                        n = parts[2]
+                        if len(parts) == 3:
+                            enregistrer_fiche(n, self._json_body() or {})
+                            return self._send(200, {"ok": True})
+                        if parts[3:] == ["interventions"]:
+                            p = self._json_body(MAX_BODY_DOCS)
+                            if not isinstance(p, dict): return self._send(400, {"erreur": "Données illisibles ou pièces jointes trop lourdes."})
+                            return self._send(201, {"ok": True, "id": ajouter_intervention(n, p)})
+                except ValueError as e:
+                    return self._send(422, {"erreur": str(e)})
+                return self._send(404, {"erreur": "Introuvable"})
             if path == "/api/nettoyage":
                 if not self._authed(): return
                 p = self._json_body() or {}
