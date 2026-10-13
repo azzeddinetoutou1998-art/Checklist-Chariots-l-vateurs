@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Parc chariots</title>
+<style>
+[hidden]{display:none!important}
+/* Layout: barre de filtres, indicateurs du parc, tableau des chariots (une ligne = une fiche) */
+:root{
+  --bg:#eef0ec; --surface:#ffffff; --fg:#171b16; --muted:#5b6358; --line:#d9ddd5; --grid:#e8ebe5;
+  --accent:#2f5d8a; --accent-soft:#e3ecf5; --brand:#f2bd1d; --brand-ink:#171b16;
+  --good:#1e7a3c; --good-bg:#e3f3e8; --warn:#9a6700; --warn-bg:#fdf3d7; --crit:#b42318; --crit-bg:#fde8e6;
+  --jaune:#e8b100; --rouge:#c8281e;
+  --font:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --cond:"Arial Narrow","Roboto Condensed","Segoe UI",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121511; --surface:#1b1f1a; --fg:#eceee8; --muted:#a3aa9f; --line:#30362e; --grid:#262b25;
+  --accent:#7fb0e0; --accent-soft:#1d2c3b; --brand:#f2bd1d; --brand-ink:#121511;
+  --good:#6fd38f; --good-bg:#16301f; --warn:#f0c040; --warn-bg:#33290f; --crit:#ff8a80; --crit-bg:#3a1714; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121511; --surface:#1b1f1a; --fg:#eceee8; --muted:#a3aa9f; --line:#30362e; --grid:#262b25;
+  --accent:#7fb0e0; --accent-soft:#1d2c3b; --brand:#f2bd1d; --brand-ink:#121511;
+  --good:#6fd38f; --good-bg:#16301f; --warn:#f0c040; --warn-bg:#33290f; --crit:#ff8a80; --crit-bg:#3a1714; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
+.top{background:var(--brand);color:var(--brand-ink);padding-inline:16px;padding-block:calc(12px + env(safe-area-inset-top,0px)) 12px;
+  background-image:repeating-linear-gradient(-45deg,transparent 0 16px,rgba(0,0,0,.9) 16px 26px);background-size:100% 6px;background-repeat:no-repeat;background-position:bottom}
+.top-in{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between}
+.top h1{margin:0;font:700 1.45rem/1.1 var(--cond);text-transform:uppercase;letter-spacing:.02em}
+.nav{display:flex;flex-wrap:wrap;gap:6px}
+.nav a{color:var(--brand-ink);font-weight:700;text-decoration:none;padding:6px 10px;border-radius:6px}
+.nav a[aria-current]{background:var(--brand-ink);color:var(--brand)}
+.wrap{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:16px 48px;display:flex;flex-direction:column;gap:16px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--fg);font:inherit;font-weight:600;padding:8px 12px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--fg);color:var(--bg)}
+select,input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--fg);min-height:38px}
+input[type=search]{width:150px}
+.spacer{flex:1}
+.add{display:flex;gap:6px}
+.add input{width:130px}
+.btn{font:inherit;font-weight:600;padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--fg);cursor:pointer;min-height:38px;text-decoration:none;display:inline-flex;align-items:center}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:2px;border-top:4px solid var(--line)}
+.kpi.crit{border-top-color:var(--crit)} .kpi.warn{border-top-color:var(--warn)} .kpi.good{border-top-color:var(--good)}
+.kpi .lab{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kpi .val{font:700 2.2rem/1.1 var(--cond);font-variant-numeric:tabular-nums}
+.kpi.crit .val{color:var(--crit)}
+.kpi .sub{font-size:.82rem;color:var(--muted)}
+.panel{background:var(--surface);border-radius:10px;padding:16px;min-width:0}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--grid)}
+td a.n{font:700 1.1rem var(--cond);color:var(--fg);text-decoration:none;font-variant-numeric:tabular-nums}
+td a.n:hover{text-decoration:underline}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;background:var(--line)}
+.sw.jaune{background:var(--jaune)} .sw.rouge{background:var(--rouge)}
+.pill{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.03em}
+.pill.crit{background:var(--crit-bg);color:var(--crit)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.good{background:var(--good-bg);color:var(--good)}
+.pill.off{background:var(--grid);color:var(--muted)}
+.muted{color:var(--muted)}
+.empty{color:var(--muted);padding:16px 8px;white-space:normal}
+</style>
+</head>
+<body>
+<div class="top"><div class="top-in">
+  <h1>Parc chariots</h1>
+  <nav class="nav"><a href="/tableau">Tableau de bord</a><a href="/horametres">Horamètres</a><a href="/chariots" aria-current="page">Chariots</a><a href="/parametres">Paramètres</a></nav>
+</div></div>
+
+<div class="wrap">
+  <div class="filters" role="toolbar" aria-label="Filtres">
+    <input id="fNum" type="search" placeholder="N° chariot" aria-label="Rechercher un numéro">
+    <select id="fSite" aria-label="Site"><option value="">Tous les sites</option></select>
+    <select id="fFour" aria-label="Fournisseur"><option value="">Tous fournisseurs</option></select>
+    <div class="seg" id="fEtat">
+      <button type="button" data-e="" aria-pressed="true">Tous</button>
+      <button type="button" data-e="arret">À l'arrêt</button>
+      <button type="button" data-e="anomalie">Anomalie ouverte</button>
+      <button type="button" data-e="vgp">VGP à prévoir</button>
+    </div>
+    <span class="spacer"></span>
+    <form class="add" id="addForm"><input id="addNum" placeholder="N° du chariot" aria-label="Numéro du nouveau chariot"><button class="btn primary" type="submit">Ouvrir / créer une fiche</button></form>
+  </div>
+
+  <section class="kpis" aria-label="Indicateurs du parc">
+    <div class="kpi"><span class="lab">Chariots en service</span><span class="val" id="kTot">–</span><span class="sub" id="kTotSub"></span></div>
+    <div class="kpi" id="kArretBox"><span class="lab">À l'arrêt</span><span class="val" id="kArret">–</span><span class="sub">déclarés non roulants, non résolus</span></div>
+    <div class="kpi" id="kAnoBox"><span class="lab">Anomalies ouvertes</span><span class="val" id="kAno">–</span><span class="sub" id="kAnoSub"></span></div>
+    <div class="kpi" id="kVgpBox"><span class="lab">VGP à prévoir</span><span class="val" id="kVgp">–</span><span class="sub">dépassées ou dans les 30 jours</span></div>
+  </section>
+
+  <section class="panel">
+    <div class="tbl"><table>
+      <thead><tr><th>Chariot</th><th>Fournisseur</th><th>Marque / modèle</th><th>Site</th><th class="num">Horamètre</th><th>Dernière checklist</th><th>État</th><th>VGP</th><th class="num">Interventions</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="9" class="empty">Chargement du parc…</td></tr></tbody>
+    </table></div>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const S = { list:[], etat:"" };
+function el(tag, cls, text){ const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const nf0 = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:0});
+const nfE = new Intl.NumberFormat("fr-FR", {style:"currency", currency:"EUR", maximumFractionDigits:0});
+const fmtD = iso => iso ? new Date(iso.length === 10 ? iso + "T12:00:00" : iso).toLocaleDateString("fr-FR", {day:"2-digit", month:"2-digit", year:"2-digit"}) : "";
+const couleur = f => /MANULOC|JAUNE/i.test(f || "") ? "jaune" : /MANUCHAR|ROUGE/i.test(f || "") ? "rouge" : "";
+const VGP = {depassee:["Dépassée","crit"], bientot:["À prévoir","warn"], a_jour:["À jour","good"], inconnue:["Non renseignée","off"]};
+
+function etat(c){
+  if (c.statut === "restitue") return ["Restitué", "off"];
+  if (c.statut === "hors_service") return ["Hors service", "off"];
+  if (c.a_l_arret) return ["À l'arrêt", "crit"];
+  if (c.anomalies_ouvertes) return [`${c.anomalies_ouvertes} anomalie${c.anomalies_ouvertes > 1 ? "s" : ""}`, "warn"];
+  return ["OK", "good"];
+}
+const actif = c => !["restitue", "hors_service"].includes(c.statut);
+const vgpAlerte = c => actif(c) && ["depassee", "bientot"].includes(c.vgp.etat);
+
+async function load(){
+  try { const r = await fetch("/api/chariots", {cache:"no-store"}); if (!r.ok) throw 0; S.list = (await r.json()).chariots; }
+  catch(e){ $("rows").replaceChildren(rowMsg("Chargement impossible. Rechargez la page.")); return; }
+  const fill = (sel, vals) => { const cur = sel.value; sel.replaceChildren(sel.options[0]); [...new Set(vals.filter(Boolean))].sort().forEach(v => { const o = el("option", null, v); o.value = v; sel.append(o); }); sel.value = cur; };
+  fill($("fSite"), S.list.map(c => c.site)); fill($("fFour"), S.list.map(c => c.fournisseur));
+  render();
+}
+function rowMsg(t){ const tr = el("tr"), td = el("td", "empty", t); td.colSpan = 9; tr.append(td); return tr; }
+
+function render(){
+  const act = S.list.filter(actif);
+  $("kTot").textContent = act.length; $("kTotSub").textContent = `${S.list.length - act.length} hors service`;
+  const arret = act.filter(c => c.a_l_arret).length, ano = act.reduce((n, c) => n + c.anomalies_ouvertes, 0), vgp = act.filter(vgpAlerte).length;
+  $("kArret").textContent = arret; $("kArretBox").className = "kpi " + (arret ? "crit" : "good");
+  $("kAno").textContent = ano; $("kAnoSub").textContent = `sur ${act.filter(c => c.anomalies_ouvertes).length} chariot(s)`; $("kAnoBox").className = "kpi " + (ano ? "warn" : "good");
+  $("kVgp").textContent = vgp; $("kVgpBox").className = "kpi " + (act.some(c => c.vgp.etat === "depassee") ? "crit" : vgp ? "warn" : "");
+
+  const num = $("fNum").value.trim().toLowerCase(), site = $("fSite").value, four = $("fFour").value;
+  const list = S.list.filter(c => (!num || c.numero.toLowerCase().includes(num)) && (!site || c.site === site) && (!four || c.fournisseur === four) &&
+    (!S.etat || (S.etat === "arret" && c.a_l_arret) || (S.etat === "anomalie" && c.anomalies_ouvertes) || (S.etat === "vgp" && vgpAlerte(c))));
+  const tb = $("rows"); tb.replaceChildren();
+  if (!S.list.length) return tb.append(rowMsg("Aucun chariot pour l'instant. Les chariots apparaissent dès leur première checklist, ou créez une fiche avec le champ « N° du chariot »."));
+  if (!list.length) return tb.append(rowMsg("Aucun chariot ne correspond aux filtres."));
+  list.forEach(c => {
+    const tr = el("tr"), go = () => location.href = "/chariots/" + encodeURIComponent(c.numero);
+    tr.onclick = e => { if (!e.target.closest("a")) go(); };
+    const a = el("a", "n", c.numero); a.href = "/chariots/" + encodeURIComponent(c.numero);
+    const f = el("td"); const sw = el("span", "sw " + couleur(c.fournisseur)); f.append(sw, document.createTextNode((c.fournisseur || "–").split(" ")[0]));
+    const [el1, cl1] = etat(c), e1 = el("td"); e1.append(el("span", "pill " + cl1, el1));
+    const [vl, vc] = VGP[c.vgp.etat], v = el("td"); v.append(el("span", "pill " + vc, vl));
+    if (c.vgp.prochaine) v.append(el("span", "muted", " " + fmtD(c.vgp.prochaine)));
+    const td0 = el("td"); td0.append(a);
+    tr.append(td0, f, el("td", null, [c.marque, c.modele].filter(Boolean).join(" ") || "–"), el("td", null, c.site || "–"),
+      el("td", "num", c.horametre == null ? "–" : nf0.format(c.horametre) + " h"), el("td", null, fmtD(c.derniere_checklist) || "–"), e1, v,
+      el("td", "num", c.interventions ? `${c.interventions}${c.cout_total ? " · " + nfE.format(c.cout_total) : ""}` : "–"));
+    tb.append(tr);
+  });
+}
+["fNum","fSite","fFour"].forEach(id => $(id).addEventListener("input", render));
+$("fEtat").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  $("fEtat").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); S.etat = b.dataset.e; render(); });
+$("addForm").addEventListener("submit", e => { e.preventDefault(); const n = $("addNum").value.replace(/\s+/g, " ").trim();
+  if (n && n.length <= 40 && n !== "." && n !== "..") location.href = "/chariots/" + encodeURIComponent(n);
+  else { $("addNum").setCustomValidity("Indiquez un numéro (40 caractères maximum)."); $("addNum").reportValidity(); $("addNum").setCustomValidity(""); $("addNum").focus(); } });
+load(); setInterval(() => { if (!document.hidden) load(); }, 60000);
+</script>
+</body>
+</html>
