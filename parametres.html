@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Paramètres checklist</title>
+<style>
+[hidden]{display:none!important}
+/* Layout: une carte par liste (une ligne = un élément), barre d'enregistrement collée en bas d'écran */
+:root{
+  --bg:#eef0ec; --surface:#ffffff; --fg:#171b16; --muted:#5b6358; --line:#d9ddd5; --grid:#e8ebe5;
+  --accent:#2f5d8a; --accent-soft:#e3ecf5; --brand:#f2bd1d; --brand-ink:#171b16;
+  --good:#1e7a3c; --good-bg:#e3f3e8; --warn:#9a6700; --warn-bg:#fdf3d7; --crit:#b42318; --crit-bg:#fde8e6;
+  --font:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --cond:"Arial Narrow","Roboto Condensed","Segoe UI",Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121511; --surface:#1b1f1a; --fg:#eceee8; --muted:#a3aa9f; --line:#30362e; --grid:#262b25;
+  --accent:#7fb0e0; --accent-soft:#1d2c3b; --brand:#f2bd1d; --brand-ink:#121511;
+  --good:#6fd38f; --good-bg:#16301f; --warn:#f0c040; --warn-bg:#33290f; --crit:#ff8a80; --crit-bg:#3a1714; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121511; --surface:#1b1f1a; --fg:#eceee8; --muted:#a3aa9f; --line:#30362e; --grid:#262b25;
+  --accent:#7fb0e0; --accent-soft:#1d2c3b; --brand:#f2bd1d; --brand-ink:#121511;
+  --good:#6fd38f; --good-bg:#16301f; --warn:#f0c040; --warn-bg:#33290f; --crit:#ff8a80; --crit-bg:#3a1714; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
+.top{background:var(--brand);color:var(--brand-ink);padding-inline:16px;padding-block:calc(12px + env(safe-area-inset-top,0px)) 12px;
+  background-image:repeating-linear-gradient(-45deg,transparent 0 16px,rgba(0,0,0,.9) 16px 26px);background-size:100% 6px;background-repeat:no-repeat;background-position:bottom}
+.top-in{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between}
+.top h1{margin:0;font:700 1.45rem/1.1 var(--cond);text-transform:uppercase;letter-spacing:.02em}
+.nav{display:flex;flex-wrap:wrap;gap:6px}
+.nav a{color:var(--brand-ink);font-weight:700;text-decoration:none;padding:6px 10px;border-radius:6px}
+.nav a[aria-current]{background:var(--brand-ink);color:var(--brand)}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:16px 110px;display:flex;flex-direction:column;gap:16px}
+.intro{margin:0;color:var(--muted);max-width:75ch}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card.wide{grid-column:1/-1}
+.card h2{margin:0;font:700 1rem/1.2 var(--cond);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.card h2 .n{font:600 .8rem var(--font);color:var(--muted);text-transform:none;letter-spacing:0}
+.help{margin:0;color:var(--muted);font-size:.86rem}
+textarea,input[type=text]{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:9px 11px;width:100%}
+textarea{font-family:var(--mono);font-size:.88rem;line-height:1.55;min-height:150px;resize:vertical}
+textarea.tall{min-height:320px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.chk{display:flex;gap:8px;align-items:flex-start;font-weight:600}
+.chk input{margin-top:3px}
+.chk span{font-weight:400;color:var(--muted);display:block;font-size:.85rem}
+.warn{background:var(--warn-bg);border-radius:8px;padding:9px 12px;font-size:.86rem}
+.extra{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.86rem}
+.tag{font-family:var(--mono);background:var(--grid);border-radius:5px;padding:2px 7px}
+.btn{font:inherit;font-weight:600;padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--fg);cursor:pointer;min-height:40px}
+.btn.small{min-height:30px;padding:4px 10px;font-size:.84rem}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.btn:disabled{opacity:.5;cursor:default}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-inline:16px;padding-block:12px calc(12px + env(safe-area-inset-bottom,0px));z-index:5}
+.bar-in{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:8;display:flex;align-items:flex-start;justify-content:center;padding:calc(40px + env(safe-area-inset-top,0px)) 16px 16px;overflow:auto}
+.modal .box{background:var(--surface);color:var(--fg);border-radius:12px;max-width:520px;width:100%;padding:20px;display:flex;flex-direction:column;gap:12px;border-top:6px solid var(--crit)}
+.modal h2{margin:0;font:700 1.2rem var(--cond);text-transform:uppercase;letter-spacing:.04em}
+.modal p{margin:0}
+.modal ul{margin:0;padding-left:1.2em;max-height:200px;overflow:auto}
+.modal li{overflow-wrap:anywhere}
+.lbl{display:flex;flex-direction:column;gap:6px;font-weight:600}
+.lbl input{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:9px 11px}
+.cerr{color:var(--crit);font-weight:700}
+.btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.btn.red{background:var(--crit);border-color:var(--crit);color:#fff}
+.status{flex:1 1 240px;font-weight:600;min-width:0}
+.status.ko{color:var(--crit)} .status.ok{color:var(--good)} .status.dirty{color:var(--warn)}
+</style>
+</head>
+<body>
+<div class="top"><div class="top-in">
+  <h1>Paramètres</h1>
+  <nav class="nav"><a href="/tableau">Tableau de bord</a><a href="/horametres">Horamètres</a><a href="/chariots">Chariots</a><a href="/parametres" aria-current="page">Paramètres</a></nav>
+</div></div>
+
+<form class="wrap" id="form" novalidate>
+  <p class="intro">Ces listes alimentent les menus déroulants du formulaire des caristes. Une ligne par élément ; vous pouvez coller une colonne copiée depuis Excel. Les changements s'appliquent dès l'enregistrement, sans redémarrer ni passer par GitHub.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Sites <span class="n" data-for="sites"></span></h2>
+      <textarea id="sites" spellcheck="false" aria-label="Sites, un par ligne"></textarea>
+    </section>
+
+    <section class="card">
+      <h2>Fournisseurs <span class="n" data-for="fournisseurs"></span></h2>
+      <textarea id="fournisseurs" spellcheck="false" aria-label="Fournisseurs, un par ligne"></textarea>
+      <p class="help">Un nom contenant MANULOC ou JAUNE s'affiche en jaune dans le parc, MANUCHAR ou ROUGE en rouge.</p>
+    </section>
+
+    <section class="card">
+      <h2>Activités <span class="n" data-for="activites"></span></h2>
+      <textarea id="activites" class="tall" spellcheck="false" aria-label="Activités, une par ligne"></textarea>
+    </section>
+
+    <section class="card">
+      <h2>Caristes <span class="n" data-for="caristes"></span></h2>
+      <textarea id="caristes" class="tall" spellcheck="false" placeholder="NOM Prénom&#10;NOM Prénom" aria-label="Caristes, un par ligne"></textarea>
+      <label class="chk"><input type="checkbox" id="caristes_obligatoire"><div>Le cariste doit choisir son nom dans la liste<span>Décoché : la liste sert de suggestions et un nom nouveau reste accepté (intérimaire, nouvel arrivant).</span></div></label>
+      <p class="help">Liste vide : le cariste tape son nom librement, comme aujourd'hui. Les noms de cette liste sont visibles par toute personne qui ouvre le formulaire.</p>
+    </section>
+
+    <section class="card">
+      <h2>Chariots du parc <span class="n" data-for="chariots"></span></h2>
+      <textarea id="chariots" class="tall" spellcheck="false" placeholder="10452&#10;CE.12 (B)&#10;A-104/2" aria-label="Numéros des chariots du parc, un par ligne"></textarea>
+      <div class="extra" id="sansFiche" hidden></div>
+      <p class="help">Tous les caractères sont acceptés : chiffres, lettres, points, tirets, parenthèses, barres… (40 au maximum). Les caristes choisissent leur chariot dans une <b>liste déroulante</b> reprenant ces numéros, et le scan de l'étiquette au gun le sélectionne automatiquement. Liste vide : le cariste tape le numéro librement.</p>
+      <p class="warn">Un numéro retiré de cette liste est <b>supprimé du parc</b>, avec sa fiche, ses interventions et leurs pièces jointes. Le mot de passe de nettoyage est demandé. Ses checklists restent dans l'historique du tableau de bord.</p>
+    </section>
+
+    <section class="card">
+      <h2>Nom affiché</h2>
+      <input type="text" id="nom_entreprise" maxlength="80" placeholder="ex. Alstom – Aytré" aria-label="Nom affiché en haut du formulaire">
+      <p class="help">Apparaît sous le titre du formulaire des caristes.</p>
+    </section>
+
+    <section class="card wide">
+      <h2>Points de contrôle <span class="n" data-for="points"></span></h2>
+      <textarea id="points" class="tall" spellcheck="false" aria-label="Points de contrôle, un par ligne, dans l'ordre d'affichage"></textarea>
+      <p class="warn">L'ordre des lignes est l'ordre du formulaire. Renommer un point le fait compter comme un point nouveau dans les statistiques : les anciennes checklists gardent l'ancien libellé. Pour corriger une faute, faites-le avant la mise en service.</p>
+    </section>
+  </div>
+</form>
+
+<div class="modal" id="delModal" hidden role="dialog" aria-modal="true" aria-labelledby="delTitle">
+  <div class="box">
+    <h2 id="delTitle">Supprimer des chariots du parc</h2>
+    <p>Ces chariots ne sont plus dans la liste. Leur fiche, leurs interventions et leurs pièces jointes seront <b>supprimées définitivement</b> :</p>
+    <ul id="delList"></ul>
+    <p class="help">Leurs checklists restent dans l'historique du tableau de bord.</p>
+    <p class="cerr" id="delOff" hidden>Suppression désactivée : ajoutez la variable NETTOYAGE_PASSWORD dans Render (service checklist-caristes, onglet Environment), ou remettez ces numéros dans la liste.</p>
+    <label class="lbl">Mot de passe de nettoyage<input type="password" id="delPass" autocomplete="off"></label>
+    <p class="cerr" id="delErr" hidden></p>
+    <div class="btns"><button class="btn" type="button" id="delCancel">Annuler</button><button class="btn red" type="button" id="delGo">Supprimer et enregistrer</button></div>
+  </div>
+</div>
+
+<div class="bar"><div class="bar-in">
+  <span class="status" id="status" role="status">Chargement…</span>
+  <button class="btn" type="button" id="reset" disabled>Annuler les modifications</button>
+  <button class="btn primary" type="submit" form="form" id="save" disabled>Enregistrer les paramètres</button>
+</div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const LISTES = ["sites", "fournisseurs", "activites", "caristes", "chariots", "points"];
+let initial = null;
+const lignes = v => { const vus = new Set(); return v.split(/\r?\n/).map(x => x.replace(/\s+/g, " ").trim()).filter(x => x && !vus.has(x.toLowerCase()) && vus.add(x.toLowerCase())); };
+function etat(){
+  const o = {nom_entreprise:$("nom_entreprise").value.trim(), caristes_obligatoire:$("caristes_obligatoire").checked};
+  LISTES.forEach(k => o[k] = lignes($(k).value)); return o;
+}
+function remplir(d){
+  LISTES.forEach(k => $(k).value = (k === "chariots" ? d.chariots.map(c => c.numero) : d[k] || []).join("\n"));
+  $("nom_entreprise").value = d.nom_entreprise || "";
+  $("caristes_obligatoire").checked = !!d.caristes_obligatoire;
+  const sf = $("sansFiche"); sf.replaceChildren();
+  if (d.chariots_sans_fiche.length){
+    sf.hidden = false; sf.append(document.createTextNode(`Vus dans les checklists mais absents de la liste (${d.chariots_sans_fiche.length}) : `));
+    d.chariots_sans_fiche.slice(0, 30).forEach(n => { const t = document.createElement("span"); t.className = "tag"; t.textContent = n; sf.append(t); });
+    const b = document.createElement("button"); b.type = "button"; b.className = "btn small"; b.textContent = "Les ajouter à la liste";
+    b.onclick = () => { $("chariots").value = [...lignes($("chariots").value), ...d.chariots_sans_fiche].join("\n"); sf.hidden = true; maj(); };
+    sf.append(b);
+  } else sf.hidden = true;
+  initial = JSON.stringify(etat()); maj();
+}
+function maj(){
+  const e = etat();
+  document.querySelectorAll(".n[data-for]").forEach(s => { const n = e[s.dataset.for].length; s.textContent = n + (n > 1 ? " éléments" : " élément"); });
+  const dirty = initial !== null && JSON.stringify(e) !== initial;
+  $("save").disabled = $("reset").disabled = !dirty;
+  const st = $("status");
+  if (dirty){ st.className = "status dirty"; st.textContent = "Modifications non enregistrées."; }
+  else if (!st.classList.contains("ok") && initial !== null){ st.className = "status"; st.textContent = "Tout est enregistré."; }
+}
+let donnees = null;
+async function charger(){
+  try { const r = await fetch("/api/parametres", {cache:"no-store"}); if (!r.ok) throw 0; donnees = await r.json(); remplir(donnees); $("status").textContent = "Tout est enregistré."; }
+  catch(e){ $("status").className = "status ko"; $("status").textContent = "Chargement impossible. Rechargez la page."; }
+}
+document.addEventListener("input", maj);
+document.addEventListener("change", maj);
+$("reset").onclick = () => { if (donnees) remplir(donnees); };
+// Chariots qui seraient supprimés : présents dans le parc mais retirés de la liste
+function retires(){
+  const garde = new Set(etat().chariots.map(n => n.toLowerCase()));
+  return (donnees ? donnees.chariots : []).filter(c => !garde.has(c.numero.toLowerCase()));
+}
+async function enregistrer(mdp){
+  const st = $("status"), b = $("save"); b.disabled = true; b.textContent = "Enregistrement…";
+  try {
+    const body = etat(); if (mdp) body.mot_de_passe = mdp;
+    const r = await fetch("/api/parametres", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok){
+      if (mdp){ $("delErr").textContent = j.erreur || "Suppression impossible."; $("delErr").hidden = false; $("delPass").select(); }
+      else { st.className = "status ko"; st.textContent = j.erreur || "Enregistrement impossible."; }
+      b.disabled = false;
+    } else { $("delModal").hidden = true; await charger(); st.className = "status ok"; st.textContent = "Paramètres enregistrés. Le formulaire des caristes est à jour."; }
+  } catch(e){ st.className = "status ko"; st.textContent = "Serveur injoignable, réessayez."; b.disabled = false; }
+  b.textContent = "Enregistrer les paramètres";
+}
+$("form").addEventListener("submit", ev => {
+  ev.preventDefault();
+  const r = retires();
+  if (!r.length) return enregistrer();
+  const ul = $("delList"); ul.replaceChildren();
+  r.forEach(c => { const li = document.createElement("li"); li.textContent = c.numero + ([c.marque, c.modele].filter(Boolean).length ? " · " + [c.marque, c.modele].filter(Boolean).join(" ") : "") + (c.interventions ? ` · ${c.interventions} intervention${c.interventions > 1 ? "s" : ""}` : ""); ul.append(li); });
+  $("delOff").hidden = donnees.nettoyage_actif !== false; $("delPass").disabled = $("delGo").disabled = donnees.nettoyage_actif === false;
+  $("delPass").value = ""; $("delErr").hidden = true; $("delModal").hidden = false; $("delPass").focus();
+});
+$("delCancel").onclick = () => $("delModal").hidden = true;
+$("delGo").onclick = () => { const m = $("delPass").value.trim(); if (!m){ $("delErr").textContent = "Saisissez le mot de passe de nettoyage."; $("delErr").hidden = false; return; } enregistrer(m); };
+$("delPass").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); $("delGo").click(); } });
+window.addEventListener("beforeunload", e => { if (!$("save").disabled) { e.preventDefault(); e.returnValue = ""; } });
+charger();
+</script>
+</body>
+</html>
